@@ -1,0 +1,55 @@
+# Weekly dependency updates.
+#
+# Minor and patch bumps are grouped into two PRs (runtime and tooling) because
+# reviewing thirty individual patch PRs a week is how people start ignoring
+# Dependabot. Major bumps stay ungrouped: they need reading, one at a time.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: 'chore(deps)'
+      prefix-development: 'chore(deps-dev)'
+      include: scope
+    groups:
+      runtime:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+      tooling:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # @types/node tracks the Node major line pinned in .nvmrc and in
+      # package.json "engines". Bumping it to 25 before the runtime moves would
+      # typecheck against APIs that are not there at run time.
+      - dependency-name: '@types/node'
+        update-types:
+          - version-update:semver-major
+
+  - package-ecosystem: github-actions
+    # `/` is correct: Dependabot looks under .github/workflows from the repo root.
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: 'chore(ci)'
+    groups:
+      github-actions:
+        patterns:
+          - '*'
