@@ -58,8 +58,36 @@ import { createMcpServer } from './server.js';
 
 /** JSON-RPC implementation-defined server errors; reserved range -32000..-32099. */
 const JSONRPC_SESSION_NOT_FOUND = -32001;
+const JSONRPC_TOO_MANY_SESSIONS = -32003;
 /** The spec's own "Invalid Request" code. */
 const JSONRPC_INVALID_REQUEST = -32600;
+
+/**
+ * Session expiry.
+ *
+ * `transport.onclose` reaps a session when the client DELETEs it or its
+ * connection drops — but a client is under no obligation to do either. A POST
+ * that completes an `initialize` handshake and is never followed up leaves a
+ * live `McpServer` and transport in the map forever, so the map grew without
+ * bound and a caller holding the shared token could exhaust memory just by
+ * looping `initialize`. (`createdAt` was already being recorded here; nothing
+ * ever read it.)
+ *
+ * Idle rather than absolute age: a long-lived client doing real work every few
+ * minutes must not have its session pulled out from under it, whereas one that
+ * has said nothing for half an hour has almost certainly gone away. Every
+ * request through a session refreshes `lastSeenAt`.
+ */
+const SESSION_IDLE_TIMEOUT_MS = 30 * 60_000;
+const SESSION_SWEEP_INTERVAL_MS = 60_000;
+
+/**
+ * Hard ceiling on concurrent sessions, as a backstop for the case the idle
+ * timeout cannot cover: a client that opens sessions faster than they expire.
+ * Once reached, `initialize` is refused rather than a live session being
+ * stolen from whoever owns it.
+ */
+const MAX_LIVE_SESSIONS = 256;
 
 export interface McpHttpDeps {
   service: KnowledgeService;
@@ -79,6 +107,8 @@ interface Session {
   server: McpServer;
   transport: StreamableHTTPServerTransport;
   createdAt: number;
+  /** Refreshed on every request routed to this session; drives idle expiry. */
+  lastSeenAt: number;
 }
 
 export function createMcpHttpHandler(deps: McpHttpDeps): McpHttpHandler {
@@ -122,7 +152,14 @@ export function createMcpHttpHandler(deps: McpHttpDeps): McpHttpHandler {
     const transport: StreamableHTTPServerTransport = new StreamableHTTPServerTransport(
       transportOptions(
         (sessionId) => {
-          sessions.set(sessionId, { id: sessionId, server, transport, createdAt: Date.now() });
+          const startedAt = Date.now();
+          sessions.set(sessionId, {
+            id: sessionId,
+            server,
+            transport,
+            createdAt: startedAt,
+            lastSeenAt: startedAt,
+          });
           logger.info(
             {
               event: 'mcp.session_initialised',
@@ -172,6 +209,45 @@ export function createMcpHttpHandler(deps: McpHttpDeps): McpHttpHandler {
     return { server, transport };
   }
 
+  /**
+   * Close every session that has gone quiet past {@link SESSION_IDLE_TIMEOUT_MS}.
+   *
+   * Closing the *server* rather than deleting the map entry is deliberate: that
+   * closes the transport, which fires `transport.onclose`, which is the single
+   * reaping point that removes the entry and logs it. Deleting here instead
+   * would leave the `McpServer` alive and unreferenced — exactly the leak this
+   * function exists to stop.
+   */
+  function sweepIdleSessions(): void {
+    const now = Date.now();
+
+    for (const session of [...sessions.values()]) {
+      const idleMs = now - session.lastSeenAt;
+      if (idleMs < SESSION_IDLE_TIMEOUT_MS) continue;
+
+      logger.info(
+        {
+          event: 'mcp.session_expired',
+          mcpSessionId: session.id,
+          idleMs,
+          ageMs: now - session.createdAt,
+          liveSessions: sessions.size,
+        },
+        'closing an MCP session that has been idle past the timeout',
+      );
+
+      void session.server.close().catch((error: unknown) => {
+        logAppError(logger, error, 'failed to close an expired MCP session', {
+          mcpSessionId: session.id,
+        });
+      });
+    }
+  }
+
+  const sweeper = setInterval(sweepIdleSessions, SESSION_SWEEP_INTERVAL_MS);
+  // A housekeeping timer must never be the reason the process refuses to exit.
+  sweeper.unref();
+
   const handler: RequestHandler = (req, res, next) => {
     const requestId = getRequestId(req);
     const log = requestLogger(logger, requestId, { channel: 'mcp' });
@@ -195,6 +271,9 @@ export function createMcpHttpHandler(deps: McpHttpDeps): McpHttpHandler {
           return;
         }
 
+        // Any traffic on a session counts as liveness, so an actively used
+        // session is never swept out from under a working client.
+        session.lastSeenAt = Date.now();
         await session.transport.handleRequest(req, res, req.body);
         return;
       }
@@ -216,6 +295,28 @@ export function createMcpHttpHandler(deps: McpHttpDeps): McpHttpHandler {
           400,
           JSONRPC_INVALID_REQUEST,
           'Bad Request: no mcp-session-id header and the body is not an initialize request. Send initialize first, then reuse the mcp-session-id it returns.',
+          requestId,
+        );
+        return;
+      }
+
+      // One last chance to make room before refusing: a burst of abandoned
+      // sessions may already be past the idle timeout with the next scheduled
+      // sweep still up to a minute away.
+      if (sessions.size >= MAX_LIVE_SESSIONS) sweepIdleSessions();
+
+      if (sessions.size >= MAX_LIVE_SESSIONS) {
+        log.warn(
+          { event: 'mcp.sessions_exhausted', liveSessions: sessions.size },
+          'refused an initialize request because the session ceiling is reached',
+        );
+        respond(
+          res,
+          503,
+          JSONRPC_TOO_MANY_SESSIONS,
+          `This server is holding its maximum of ${MAX_LIVE_SESSIONS} concurrent MCP sessions. ` +
+            'Close sessions you are finished with by sending DELETE with the mcp-session-id ' +
+            'header, then retry.',
           requestId,
         );
         return;
@@ -245,6 +346,10 @@ export function createMcpHttpHandler(deps: McpHttpDeps): McpHttpHandler {
   };
 
   async function closeAll(): Promise<void> {
+    // Stop housekeeping first: a sweep firing mid-shutdown would race the
+    // teardown below over the same sessions.
+    clearInterval(sweeper);
+
     const open = [...sessions.values()];
     // Cleared up front so the `onclose` callbacks fired by `server.close()`
     // find nothing to reap and stay quiet during shutdown.

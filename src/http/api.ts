@@ -29,7 +29,7 @@
  * be coerced is passed through unchanged so zod produces the error message
  * rather than this module inventing one.
  */
-import { Router } from 'express';
+import express, { Router } from 'express';
 import type { Request, RequestHandler, Response } from 'express';
 
 import type { AppConfig } from '../config/env.js';
@@ -43,7 +43,6 @@ import {
   storeContentSchema,
 } from '../domain/schemas.js';
 import type { Logger } from '../logger.js';
-import { createMcpAuthMiddleware } from '../mcp/auth.js';
 import type { KnowledgeService } from '../services/types.js';
 import { createRequestContext } from './request-id.js';
 
@@ -51,15 +50,28 @@ export interface ApiDeps {
   config: AppConfig;
   logger: Logger;
   service: KnowledgeService;
+  /**
+   * The bearer-token middleware, constructed by `app.ts` and shared with the
+   * MCP route. Passed in rather than built here so the two surfaces share one
+   * failed-attempt throttle — see the docblock in `app.ts`.
+   */
+  requireAuth: RequestHandler;
+  /** `express.json()` limit, mounted below after auth. */
+  bodyLimit: string;
 }
 
 export function createApiRouter(deps: ApiDeps): Router {
-  const { config, logger, service } = deps;
+  const { config, logger, service, requireAuth, bodyLimit } = deps;
   const router = Router();
 
   // Applies to every method and every path below, including GETs. See the
   // module docblock — this is the whole reason web.ts talks to the service.
-  router.use(createMcpAuthMiddleware(config.mcp, logger));
+  router.use(requireAuth);
+
+  // AFTER auth, deliberately: body-parser buffers and parses the whole payload,
+  // so mounting it above the line would let an unauthenticated caller spend the
+  // server's memory and CPU on a body that is about to be answered with a 401.
+  router.use(express.json({ limit: bodyLimit }));
 
   const context = (req: Request, res: Response) => createRequestContext(req, res, logger, 'rest');
 

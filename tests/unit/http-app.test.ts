@@ -33,11 +33,14 @@ import { createApp, type AppBundle } from '../../src/app.js';
 import { loadConfig, type AppConfig } from '../../src/config/env.js';
 import type { MongoConnection } from '../../src/db/client.js';
 import type { EmbeddingProvider, EmbeddingProviderInfo } from '../../src/embeddings/provider.js';
-import { EmbeddingError } from '../../src/errors.js';
+import { EmbeddingError, SearchError } from '../../src/errors.js';
 import { createLogger } from '../../src/logger.js';
 import type { KnowledgeService } from '../../src/services/types.js';
 
-const AUTH_TOKEN = 'http-test-token-0123456789';
+// `testConfig` builds a NODE_ENV=production config, so this has to satisfy the
+// production token rules in config/env.ts — hence a real-looking hex secret
+// rather than a readable label.
+const AUTH_TOKEN = '4d8f2b6a0c9e1537bd42a8f6c0e93b175a2d8f4c6b09e3a17d5f2b8c4a6e0d93';
 const AUTH_HEADERS = { authorization: `Bearer ${AUTH_TOKEN}` };
 const JSON_HEADERS = { ...AUTH_HEADERS, 'content-type': 'application/json' };
 
@@ -685,3 +688,109 @@ function documentDetail() {
     ],
   };
 }
+
+// ---------------------------------------------------------------------------
+// Body parsing happens after authentication
+// ---------------------------------------------------------------------------
+
+/**
+ * Its own app instance, deliberately.
+ *
+ * The auth middleware now throttles repeated failures per source IP, and the
+ * counter lives inside one middleware instance. Sharing the module-level `app`
+ * would make these tests spend the same budget as the 401 tests above — and
+ * make either group's result depend on how many unauthenticated requests some
+ * unrelated test happened to make first.
+ */
+const preAuthApp = await startApp();
+
+describe('pre-auth body handling', () => {
+  /**
+   * `express.json()` used to be mounted globally, above every auth check, so an
+   * unauthenticated client could make the process buffer and parse a body up to
+   * the 12mb limit before the 401 was written.
+   *
+   * Malformed JSON is the cheap probe for the ordering: whichever middleware
+   * runs first decides the status. 400 would mean body-parser still runs first.
+   */
+  it('refuses an unauthenticated POST to /api without parsing its body', async () => {
+    const response = await fetch(`${preAuthApp.baseUrl}/api/content`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ this is not valid json',
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('refuses an unauthenticated POST to /mcp without parsing its body', async () => {
+    const response = await fetch(`${preAuthApp.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{ this is not valid json',
+    });
+
+    expect(response.status).toBe(401);
+  });
+
+  it('still reports malformed JSON to an authenticated caller', async () => {
+    const response = await fetch(`${preAuthApp.baseUrl}/api/content`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: '{ this is not valid json',
+    });
+
+    expect(response.status).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Error payloads do not leak
+// ---------------------------------------------------------------------------
+
+describe('error payload hygiene', () => {
+  it('replaces an unexpected error message with a generic one', async () => {
+    app.service.listSources.mockRejectedValue(
+      new Error('connection to mongodb://admin:hunter2@db.internal:27017 refused'),
+    );
+
+    const response = await fetch(`${app.baseUrl}/api/sources`, { headers: AUTH_HEADERS });
+    const raw = await response.text();
+
+    expect(response.status).toBe(500);
+    // Neither the credential, nor the host, nor the original wording.
+    expect(raw).not.toContain('hunter2');
+    expect(raw).not.toContain('db.internal');
+    expect(raw).not.toContain('refused');
+    expect((JSON.parse(raw) as { error: { requestId: unknown } }).error.requestId).toEqual(
+      expect.any(String),
+    );
+  });
+
+  it('keeps a classified error message but scrubs credentials out of it', async () => {
+    app.service.searchKnowledge.mockRejectedValue(
+      new SearchError(
+        'Vector search failed: no primary reachable at mongodb://admin:hunter2@db.internal:27017',
+      ),
+    );
+
+    const response = await fetch(`${app.baseUrl}/api/search?q=x`, { headers: AUTH_HEADERS });
+    const raw = await response.text();
+
+    expect(response.status).toBe(503);
+    // A `search` error is ours and is actionable, so the wording survives...
+    expect(raw).toContain('Vector search failed');
+    // ...but the connection string inside it does not.
+    expect(raw).not.toContain('hunter2');
+    expect(raw).not.toContain('db.internal');
+  });
+
+  it('does not include a stack trace in production', async () => {
+    app.service.listSources.mockRejectedValue(new Error('boom'));
+
+    const response = await fetch(`${app.baseUrl}/api/sources`, { headers: AUTH_HEADERS });
+    const body = (await response.json()) as { error: Record<string, unknown> };
+
+    expect(body.error['stack']).toBeUndefined();
+  });
+});

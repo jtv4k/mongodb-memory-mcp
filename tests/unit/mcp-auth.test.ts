@@ -341,3 +341,95 @@ describe('secret hygiene', () => {
     expect(exchange.captured.headers['www-authenticate']).toBe('Bearer realm="kb errornone"');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Failed-attempt throttle
+// ---------------------------------------------------------------------------
+
+/**
+ * Constant-time comparison closes the timing oracle; it does nothing about how
+ * *often* a client may guess. These cover the volume ceiling.
+ *
+ * Mirrors MAX_FAILURES_PER_WINDOW in src/mcp/auth.ts. Kept as a literal rather
+ * than exported from the module, so that loosening the limit has to be a
+ * deliberate edit in two places.
+ */
+const MAX_FAILURES = 10;
+
+describe('failed-attempt throttle', () => {
+  const guess = (ip: string): Exchange => {
+    const exchange = createExchange({ authorization: 'Bearer wrong-token-entirely' }, { ip });
+    run(middleware, exchange);
+    return exchange;
+  };
+
+  const exhaust = (ip: string): void => {
+    for (let attempt = 1; attempt <= MAX_FAILURES; attempt += 1) guess(ip);
+  };
+
+  it('answers 401 up to the limit, then 429 with a Retry-After', () => {
+    for (let attempt = 1; attempt <= MAX_FAILURES; attempt += 1) {
+      expect(guess('198.51.100.4').captured.status).toBe(401);
+    }
+
+    const throttled = guess('198.51.100.4');
+    expect(throttled.captured.status).toBe(429);
+    expect(Number(throttled.captured.headers['retry-after'])).toBeGreaterThan(0);
+    expect(errorBody(throttled).error.data['code']).toBe('E_TOO_MANY_REQUESTS');
+  });
+
+  it('counts a missing credential too, so an unauthenticated scan is damped', () => {
+    for (let attempt = 1; attempt <= MAX_FAILURES; attempt += 1) {
+      const exchange = createExchange({}, { ip: '198.51.100.5' });
+      run(middleware, exchange);
+      expect(exchange.captured.status).toBe(401);
+    }
+
+    const exchange = createExchange({}, { ip: '198.51.100.5' });
+    run(middleware, exchange);
+    expect(exchange.captured.status).toBe(429);
+  });
+
+  it('throttles per source address rather than globally', () => {
+    exhaust('198.51.100.4');
+    expect(guess('198.51.100.4').captured.status).toBe(429);
+
+    // One noisy client must not lock everybody else out.
+    expect(guess('203.0.113.99').captured.status).toBe(401);
+  });
+
+  it('refuses even the correct token while a client is locked out', () => {
+    exhaust('198.51.100.4');
+
+    // This is what makes the throttle a ceiling rather than a speed bump: the
+    // comparison is not reached at all, so guesses cost the attacker a wait
+    // regardless of whether they got lucky.
+    const exchange = createExchange({ authorization: `Bearer ${TOKEN}` }, { ip: '198.51.100.4' });
+    run(middleware, exchange);
+
+    expect(exchange.captured.status).toBe(429);
+    expect(exchange.captured.nextCalls).toBe(0);
+  });
+
+  it('clears the counter once a client authenticates successfully', () => {
+    for (let attempt = 1; attempt < MAX_FAILURES; attempt += 1) guess('198.51.100.4');
+
+    const good = createExchange({ authorization: `Bearer ${TOKEN}` }, { ip: '198.51.100.4' });
+    run(middleware, good);
+    expect(good.captured.nextCalls).toBe(1);
+
+    // Budget reset, so a later mistake is an ordinary 401 again rather than
+    // tipping straight over the edge.
+    expect(guess('198.51.100.4').captured.status).toBe(401);
+  });
+
+  it('never writes either token into the throttle log line', () => {
+    for (let attempt = 1; attempt <= MAX_FAILURES + 1; attempt += 1) guess('198.51.100.4');
+
+    expect(records.some((record) => record.serialised.includes('auth.throttled'))).toBe(true);
+    for (const record of records) {
+      expect(record.serialised).not.toContain(TOKEN);
+      expect(record.serialised).not.toContain('wrong-token-entirely');
+    }
+  });
+});

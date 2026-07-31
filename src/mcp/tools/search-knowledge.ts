@@ -26,6 +26,7 @@ import {
   clip,
   condense,
   formatDuration,
+  inline,
   plural,
   runTool,
   toolResult,
@@ -120,9 +121,14 @@ function renderHit(hit: SearchHit, position: number): string {
     `   sourceId: ${hit.sourceId} · chunk ${hit.chunkIndex} · ${hit.contentType}${renderRanks(hit)}`,
   ];
 
-  if (hit.headingPath.length > 0) lines.push(`   section: ${hit.headingPath.join(' > ')}`);
+  // Each of these is ingested content joined into a line the model reads
+  // structurally, so the join result is flattened rather than trusted: only
+  // `sourceId` and `contentType` above are charset-restricted by their schemas.
+  if (hit.headingPath.length > 0) {
+    lines.push(`   section: ${inline(hit.headingPath.join(' > '))}`);
+  }
   if (hit.uri !== null) lines.push(`   uri: ${clip(hit.uri, 200)}`);
-  if (hit.tags.length > 0) lines.push(`   tags: ${hit.tags.join(', ')}`);
+  if (hit.tags.length > 0) lines.push(`   tags: ${inline(hit.tags.join(', '))}`);
 
   const passage = renderPassage(hit);
   if (passage.length > 0) lines.push(`   ${passage}`);
