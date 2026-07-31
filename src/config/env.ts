@@ -49,6 +49,74 @@ const csvFromEnv = (defaultValue: readonly string[] = []) =>
     z.array(z.string().min(1)),
   );
 
+/**
+ * `TRUST_PROXY` — how Express should read `X-Forwarded-For`.
+ *
+ * This was a plain boolean, and `true` is the footgun in Express's API: it
+ * trusts the *entire* forwarded chain, so `req.ip` becomes whatever the client
+ * put in the header. `req.ip` is what the auth-rejection log records and what
+ * the failed-attempt throttle in `mcp/auth.ts` is keyed on, so a spoofable
+ * value means forged log entries and a trivially evaded rate limit.
+ *
+ * Accepted forms, in the order they are tried:
+ *   - unset / `false` / `no` / `off` / `0`  -> no proxy (the default)
+ *   - `true` / `yes` / `on`                 -> trust everything (rejected in production)
+ *   - a non-negative integer                -> hop count, e.g. `1` behind one load balancer
+ *   - anything else                         -> passed to Express verbatim as a
+ *     trusted address list: `loopback`, `10.0.0.0/8`, `uniquelocal`, comma-separated
+ *
+ * `1` and `0` are read as hop counts rather than as booleans on purpose. Both
+ * readings coincide for `0`, and for `1` the hop count is both the far more
+ * likely intent and the safer of the two.
+ */
+const trustProxyFromEnv = z.preprocess(
+  (raw) => {
+    if (raw === undefined || raw === '') return false;
+    if (typeof raw === 'boolean') return raw;
+
+    const normalized = String(raw).trim();
+    if (normalized === '') return false;
+
+    const lowered = normalized.toLowerCase();
+    if (FALSY.has(lowered)) return false;
+    if (lowered === 'true' || lowered === 'yes' || lowered === 'on') return true;
+    if (/^\d+$/u.test(normalized)) return Number(normalized);
+
+    return normalized;
+  },
+  z.union([z.boolean(), z.number().int().min(0).max(31), z.string().min(1)]),
+);
+
+/**
+ * Production-only floors on `MCP_AUTH_TOKEN`.
+ *
+ * The base rule is 16 characters, which is enough to keep a laptop honest but
+ * permits `passwordpassword`. In production the token is the single credential
+ * guarding read *and* write access to the whole knowledge base, so it has to
+ * look like it came out of `openssl rand -hex 32`. The distinct-character floor
+ * is what separates a real random token from a repeated word.
+ */
+const MIN_PRODUCTION_TOKEN_CHARS = 24;
+const MIN_PRODUCTION_TOKEN_DISTINCT_CHARS = 10;
+
+/** Substrings that mark a value as a placeholder somebody forgot to replace. */
+const PLACEHOLDER_TOKEN_MARKERS = [
+  'not-a-secret',
+  'notasecret',
+  'changeme',
+  'change-me',
+  'replace-me',
+  'replaceme',
+  'placeholder',
+  'example',
+  'password',
+  'insecure',
+  'dev-local',
+  'your-token',
+  'yourtoken',
+  'test-token',
+];
+
 const port = z.coerce.number().int().min(1).max(65535);
 const positiveInt = z.coerce.number().int().positive();
 const nonNegativeInt = z.coerce.number().int().min(0);
@@ -126,7 +194,7 @@ export const envSchema = z
 
     // ---- web ---------------------------------------------------------------
     WEB_UI_ENABLED: boolFromEnv(true),
-    TRUST_PROXY: boolFromEnv(false),
+    TRUST_PROXY: trustProxyFromEnv,
   })
   .superRefine((env, ctx) => {
     if (env.EMBEDDING_PROVIDER === 'voyage' && !env.VOYAGE_API_KEY) {
@@ -161,6 +229,54 @@ export const envSchema = z
       });
     }
 
+    if (env.NODE_ENV === 'production') {
+      // `trust proxy: true` makes `req.ip` client-controlled. In production that
+      // is a forged audit trail and a rate limiter an attacker can step around
+      // by varying one header, so the operator has to say how much to trust.
+      if (env.TRUST_PROXY === true) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['TRUST_PROXY'],
+          message:
+            'must not be a bare "true" in production — that trusts the whole X-Forwarded-For ' +
+            'chain and lets any client forge its own source IP. Use the number of proxies in ' +
+            'front of this process (e.g. TRUST_PROXY=1), or a trusted address list ' +
+            '(e.g. TRUST_PROXY=loopback,10.0.0.0/8).',
+        });
+      }
+
+      const token = env.MCP_AUTH_TOKEN;
+      if (token.length < MIN_PRODUCTION_TOKEN_CHARS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MCP_AUTH_TOKEN'],
+          message:
+            `must be at least ${MIN_PRODUCTION_TOKEN_CHARS} characters in production ` +
+            '(generate one with: openssl rand -hex 32)',
+        });
+      } else if (new Set(token).size < MIN_PRODUCTION_TOKEN_DISTINCT_CHARS) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MCP_AUTH_TOKEN'],
+          message:
+            `uses fewer than ${MIN_PRODUCTION_TOKEN_DISTINCT_CHARS} distinct characters, so it ` +
+            'is a repeated or patterned string rather than a random secret ' +
+            '(generate one with: openssl rand -hex 32)',
+        });
+      }
+
+      const lowered = token.toLowerCase();
+      if (PLACEHOLDER_TOKEN_MARKERS.some((marker) => lowered.includes(marker))) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['MCP_AUTH_TOKEN'],
+          message:
+            'looks like a placeholder that was never replaced ' +
+            '(generate a real one with: openssl rand -hex 32)',
+        });
+      }
+    }
+
     const allowed = KNOWN_MODEL_DIMENSIONS[env.EMBEDDING_MODEL];
     if (
       env.EMBEDDING_PROVIDER === 'voyage' &&
@@ -190,7 +306,12 @@ export interface RuntimeConfig {
   port: number;
   host: string;
   shutdownTimeoutMs: number;
-  trustProxy: boolean;
+  /**
+   * Handed to `app.set('trust proxy', …)` verbatim. Boolean, a hop count, or a
+   * trusted address list — see {@link trustProxyFromEnv} for why it is not just
+   * a boolean any more.
+   */
+  trustProxy: boolean | number | string;
 }
 
 export interface LoggingConfig {

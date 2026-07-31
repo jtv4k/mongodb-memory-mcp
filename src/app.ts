@@ -17,12 +17,32 @@
  *  4. `X-Content-Type-Options: nosniff` — cheap, global, and applies to the JSON
  *     surfaces too, not just the pages. The rest of the page hardening (CSP) is
  *     mounted in `http/web.ts`, where it can be scoped to HTML responses.
- *  5. `express.json()` — BEFORE the MCP handler, which reads `req.body`.
- *  6. MCP, behind auth, for every method on `config.mcp.path`.
- *  7. health — open, no auth. An orchestrator probe has no credentials.
- *  8. `/api` — authenticated *inside* the router, GETs included.
- *  9. web pages and static assets.
- * 10. 404, then the error handler. Both must be last, in that order.
+ *  5. MCP, behind auth, for every method on `config.mcp.path`.
+ *  6. health — open, no auth. An orchestrator probe has no credentials.
+ *  7. `/api` — authenticated *inside* the router, GETs included.
+ *  8. web pages and static assets.
+ *  9. 404, then the error handler. Both must be last, in that order.
+ *
+ * ## Why `express.json()` is not global
+ *
+ * It used to be mounted here, above the MCP handler, which put it above every
+ * auth check in the process. Body-parser buffers and `JSON.parse`s the whole
+ * payload before the next middleware runs, so an *unauthenticated* client could
+ * make the server allocate and parse up to `JSON_BODY_LIMIT` on any path — the
+ * 401 was only written afterwards. That is a pre-auth memory and CPU
+ * amplification primitive, and it applied to paths that take no body at all.
+ *
+ * The parser is therefore mounted per-route and always *after* the route's auth
+ * middleware, so an unauthenticated request is rejected while its body is still
+ * unread on the socket. Only two places read `req.body` — the MCP handler and
+ * the `/api` router — and each mounts its own parser with the same limit.
+ *
+ * ## Why auth is constructed once
+ *
+ * `createMcpAuthMiddleware` owns the failed-attempt throttle, so building it
+ * twice would give an attacker two independent budgets and let them double
+ * their guess rate by alternating between `/mcp` and `/api`. One instance is
+ * shared by both surfaces.
  *
  * ## Where the templates and assets come from
  *
@@ -150,25 +170,30 @@ export function createApp(deps: CreateAppDeps): AppBundle {
     next();
   });
 
-  // --- 5. body parsing -----------------------------------------------------
-  app.use(express.json({ limit: JSON_BODY_LIMIT }));
+  // Shared by `/mcp` and `/api` so the two surfaces cannot be played off
+  // against each other for extra token guesses. See the module docblock.
+  const requireAuth = createMcpAuthMiddleware(config.mcp, logger);
 
-  // --- 6. MCP (Streamable HTTP) -------------------------------------------
+  // --- 5. MCP (Streamable HTTP) -------------------------------------------
   // `all`, not `post`: the transport uses GET for the SSE stream and DELETE to
   // end a session. Auth is mounted per-route rather than globally so the health
-  // probes below stay reachable.
+  // probes below stay reachable — and the body parser sits *after* auth, so an
+  // unauthenticated POST is refused before its body is read.
   const mcp = createMcpHttpHandler({ service, config, logger });
-  app.all(config.mcp.path, createMcpAuthMiddleware(config.mcp, logger), mcp.handler);
+  app.all(config.mcp.path, requireAuth, express.json({ limit: JSON_BODY_LIMIT }), mcp.handler);
 
-  // --- 7. health probes (deliberately unauthenticated) --------------------
+  // --- 6. health probes (deliberately unauthenticated) --------------------
   // Docker's HEALTHCHECK and a Kubernetes kubelet cannot present a bearer
   // token, and the payloads carry no secrets — see `http/health.ts`.
   app.use(createHealthRouter({ config, logger, connection, embeddings }));
 
-  // --- 8. REST API (authenticated inside the router, reads included) ------
-  app.use('/api', createApiRouter({ config, logger, service }));
+  // --- 7. REST API (authenticated inside the router, reads included) ------
+  app.use(
+    '/api',
+    createApiRouter({ config, logger, service, requireAuth, bodyLimit: JSON_BODY_LIMIT }),
+  );
 
-  // --- 9. web UI + static assets ------------------------------------------
+  // --- 8. web UI + static assets ------------------------------------------
   if (config.web.enabled) {
     // The pages call `KnowledgeService` in-process; they never fetch `/api`,
     // which would require shipping the API token to the browser.
@@ -186,7 +211,7 @@ export function createApp(deps: CreateAppDeps): AppBundle {
     }),
   );
 
-  // --- 10. terminal handlers ----------------------------------------------
+  // --- 9. terminal handlers -----------------------------------------------
   app.use(notFoundHandler());
   app.use(createErrorHandler({ config, logger, bodyLimit: JSON_BODY_LIMIT }));
 

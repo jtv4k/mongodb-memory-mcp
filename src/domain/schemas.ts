@@ -55,6 +55,66 @@ const tagsSchema = z
   .transform((tags) => [...new Set(tags.map((tag) => tag.toLowerCase()))]);
 
 /**
+ * Deepest nesting metadata may carry.
+ *
+ * A limit is needed independently of the key rules: a deeply nested object is a
+ * denial-of-service vector against every recursive consumer downstream — this
+ * validator, `JSON.stringify`, BSON serialisation (which has its own 100-level
+ * ceiling and errors far less legibly), and any future walk of the value.
+ */
+const MAX_METADATA_DEPTH = 16;
+
+/**
+ * Reject `__proto__`/`constructor`/`prototype` and `$`-prefixed keys at EVERY
+ * level, not just the top one.
+ *
+ * The original check only walked `Object.keys(value)`, so `{ a: { $ne: 1 } }`
+ * and `{ a: { __proto__: … } }` both sailed through. Neither is exploitable
+ * today — `JSON.parse` makes `__proto__` an ordinary own property rather than
+ * a setter call, and metadata is only ever stored, never spread into a filter
+ * or an update document — so this is closing the gap between what the guard
+ * claimed and what it did, before some later caller makes the assumption real.
+ *
+ * Issues are accumulated rather than thrown, so one call reports every bad key.
+ */
+function checkMetadataValue(
+  value: unknown,
+  ctx: z.RefinementCtx,
+  path: string,
+  depth: number,
+): void {
+  if (depth > MAX_METADATA_DEPTH) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `"${path}" nests deeper than the ${MAX_METADATA_DEPTH} level limit`,
+    });
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      checkMetadataValue(entry, ctx, `${path}[${index}]`, depth + 1);
+    });
+    return;
+  }
+
+  if (typeof value !== 'object' || value === null) return;
+
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    const where = path.length > 0 ? `${path}.${key}` : key;
+
+    if (PROTO_KEYS.has(key)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `disallowed key "${where}"` });
+    }
+    if (key.startsWith('$')) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: `key "${where}" may not start with $` });
+    }
+
+    checkMetadataValue(entry, ctx, where, depth + 1);
+  }
+}
+
+/**
  * Free-form metadata. Guarded against prototype pollution and unbounded size —
  * this object is persisted verbatim.
  */
@@ -62,14 +122,8 @@ const metadataSchema = z
   .record(z.unknown())
   .default({})
   .superRefine((value, ctx) => {
-    for (const key of Object.keys(value)) {
-      if (PROTO_KEYS.has(key)) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `disallowed key "${key}"` });
-      }
-      if (key.startsWith('$')) {
-        ctx.addIssue({ code: z.ZodIssueCode.custom, message: `key "${key}" may not start with $` });
-      }
-    }
+    checkMetadataValue(value, ctx, '', 0);
+
     let serialized: string;
     try {
       serialized = JSON.stringify(value) ?? '';

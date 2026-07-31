@@ -6,8 +6,23 @@
  *  1. **Nothing internal escapes.** Every thrown value is normalised to an
  *     `AppError` and serialised with `toClientPayload()`, which deliberately
  *     omits the cause chain. A stack trace is attached only outside production.
- *     An unrecognised error becomes a flat `E_INTERNAL` / 500 — the real message
- *     goes to the log, not to the client.
+ *
+ *     Two mechanisms enforce this, because `toAppError` preserves the original
+ *     `Error.message` when it wraps an unrecognised throw — so "it became an
+ *     `InternalError`" is NOT on its own a guarantee that the message is safe:
+ *
+ *       - `kind: 'internal'` (the unrecognised bucket) is answered with a fixed
+ *         string and no `details`. The real message is in the log line, findable
+ *         by request id. This is the only kind we cannot reason about, so it is
+ *         the only one that is discarded wholesale.
+ *       - Every *other* kind keeps its message — those are written by us and are
+ *         meant to be actionable — but is passed through {@link redactSecrets}
+ *         first. A `SearchError` quotes `describeError(cause)`, and a driver
+ *         error quotes the connection string, which carries the password.
+ *
+ *     The MCP surface has always redacted (`mcp/tools/shared.ts`). Doing it in
+ *     only one of the two transports meant the same `AppError` was safe over MCP
+ *     and leaking over REST, so both now call the same helper.
  *
  *  2. **The response format follows the caller.** `/api/*` and the MCP endpoint
  *     always get JSON; a browser navigating the web UI gets the rendered
@@ -27,7 +42,15 @@ import type { AppConfig } from '../config/env.js';
 import { AppError, NotFoundError, isAppError, toAppError } from '../errors.js';
 import { MAX_CONTENT_CHARS } from '../domain/schemas.js';
 import { logAppError, type Logger } from '../logger.js';
+import { redactSecrets } from '../redact.js';
 import { getRequestId } from './request-id.js';
+
+/**
+ * What an `internal` error says on the wire. Deliberately content-free: the
+ * request id is the handle, and the detail lives in the log.
+ */
+const GENERIC_INTERNAL_MESSAGE =
+  'The server hit an unexpected error. Quote the request id below when reporting it.';
 
 export interface ErrorHandlerDeps {
   config: AppConfig;
@@ -66,9 +89,9 @@ export function createErrorHandler(deps: ErrorHandlerDeps): ErrorRequestHandler 
     }
 
     const payload = {
-      ...error.toClientPayload(),
+      ...clientPayload(error, config),
       requestId,
-      ...(includeStack && error.stack ? { stack: error.stack } : {}),
+      ...(includeStack && error.stack ? { stack: redactSecrets(error.stack, config) } : {}),
     };
 
     if (wantsJson(req, config)) {
@@ -90,9 +113,12 @@ export function createErrorHandler(deps: ErrorHandlerDeps): ErrorRequestHandler 
         // A broken template must not turn a 404 into an unhandled rejection.
         if (renderError) {
           logAppError(logger, renderError, 'failed to render the error page', { requestId });
+          // `payload.message`, never `error.message`: this fallback is still a
+          // response body, so it is subject to the same generic-internal and
+          // redaction rules as the JSON and HTML paths above.
           res
             .type('text/plain')
-            .send(`${error.httpStatus} ${error.message}\nrequest id: ${requestId}`);
+            .send(`${error.httpStatus} ${payload.message}\nrequest id: ${requestId}`);
           return;
         }
         res.send(html);
@@ -104,6 +130,27 @@ export function createErrorHandler(deps: ErrorHandlerDeps): ErrorRequestHandler 
 // ---------------------------------------------------------------------------
 // internals
 // ---------------------------------------------------------------------------
+
+/**
+ * The error body, with the two rules from the module docblock applied.
+ *
+ * `details` is left as-is on the kinds that keep it: every `details` object in
+ * this codebase is built from internally-chosen keys and values (index names,
+ * collection names, operation names, attempt counts, zod issue paths) rather
+ * than from upstream response text, so it is not a leak path the way `message`
+ * is. If that ever stops being true, redact here too.
+ */
+function clientPayload(
+  error: AppError,
+  config: AppConfig,
+): ReturnType<AppError['toClientPayload']> {
+  if (error.kind === 'internal') {
+    return { code: error.code, kind: error.kind, message: GENERIC_INTERNAL_MESSAGE };
+  }
+
+  const payload = error.toClientPayload();
+  return { ...payload, message: redactSecrets(payload.message, config) };
+}
 
 /** Shape of the `http-errors` objects body-parser and Express throw. */
 interface HttpishError {

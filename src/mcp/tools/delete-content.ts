@@ -23,7 +23,7 @@ import {
 } from '../../domain/schemas.js';
 import type { DeleteContentResult } from '../../domain/types.js';
 import type { DeleteContentInput } from '../../domain/schemas.js';
-import { plural, runTool, toolResult, type ToolDeps } from './shared.js';
+import { inline, plural, runTool, toolResult, type ToolDeps } from './shared.js';
 
 /** Beyond this many, the list of deleted sourceIds is summarised instead. */
 const MAX_LISTED_SOURCE_IDS = 25;
@@ -90,11 +90,19 @@ function renderDeleteText(input: DeleteContentInput, result: DeleteContentResult
   return lines.join('\n');
 }
 
-/** Exactly one of these is set — the schema guarantees it before we get here. */
+/**
+ * Exactly one of these is set — the schema guarantees it before we get here.
+ *
+ * Everything is flattened with {@link inline} before interpolation. `sourceId`
+ * and `documentId` are charset-restricted by their schemas and cannot carry a
+ * newline, but `tags` are only length-bounded, so an unneutralised tag could
+ * forge extra lines into the sentence a model reads back as confirmation of
+ * what it just destroyed.
+ */
 function describeSelector(input: DeleteContentInput): string {
-  if (input.sourceId !== undefined) return `sourceId "${input.sourceId}"`;
-  if (input.documentId !== undefined) return `documentId ${input.documentId}`;
-  if (input.tags !== undefined) return `all of the tags [${input.tags.join(', ')}]`;
+  if (input.sourceId !== undefined) return `sourceId "${inline(input.sourceId)}"`;
+  if (input.documentId !== undefined) return `documentId ${inline(input.documentId)}`;
+  if (input.tags !== undefined) return `all of the tags [${inline(input.tags.join(', '))}]`;
   return 'that selector';
 }
 

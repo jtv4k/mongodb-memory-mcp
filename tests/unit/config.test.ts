@@ -64,7 +64,9 @@ describe('loadConfig — happy path', () => {
       CHUNK_SIZE_TOKENS: '800',
       CHUNK_OVERLAP_TOKENS: '120',
       CHUNK_MIN_TOKENS: '40',
-      MCP_AUTH_TOKEN: 'super-secret-mcp-token',
+      // NODE_ENV is 'production' here, which applies the stricter token rules:
+      // >= 24 chars, >= 10 distinct characters, no placeholder markers.
+      MCP_AUTH_TOKEN: '9f3c1a7e5b2d84660aa1c3e7d95b402f8e6a1d3c7b95f024e8a6c1d3b7f95e02',
       MCP_PATH: '/rag/mcp',
       MCP_SERVER_NAME: 'kb',
       MCP_SERVER_VERSION: '2.1.0',
@@ -89,7 +91,9 @@ describe('loadConfig — happy path', () => {
         port: 8080,
         host: '127.0.0.1',
         shutdownTimeoutMs: 5000,
-        trustProxy: true,
+        // TRUST_PROXY='1' is a HOP COUNT, not a boolean. See trustProxyFromEnv:
+        // reading it as `true` would trust the whole X-Forwarded-For chain.
+        trustProxy: 1,
       },
       logging: { level: 'debug', pretty: true },
       mongo: {
@@ -117,7 +121,7 @@ describe('loadConfig — happy path', () => {
       },
       chunking: { chunkSizeTokens: 800, chunkOverlapTokens: 120, minChunkTokens: 40 },
       mcp: {
-        authToken: 'super-secret-mcp-token',
+        authToken: '9f3c1a7e5b2d84660aa1c3e7d95b402f8e6a1d3c7b95f024e8a6c1d3b7f95e02',
         path: '/rag/mcp',
         serverName: 'kb',
         serverVersion: '2.1.0',
@@ -360,5 +364,100 @@ describe('loadConfig — rejections', () => {
     expect(error.kind).toBe('config');
     expect(error.code).toBe('E_CONFIG');
     expect(error.message).toContain('.env.example');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// TRUST_PROXY
+// ---------------------------------------------------------------------------
+
+/** A plausible `openssl rand -hex 32` value, for the production-only rules. */
+const STRONG_TOKEN = '9f3c1a7e5b2d84660aa1c3e7d95b402f8e6a1d3c7b95f024e8a6c1d3b7f95e02';
+
+describe('TRUST_PROXY', () => {
+  const trustProxy = (value?: string): boolean | number | string =>
+    loadConfig(minimalEnv(value === undefined ? {} : { TRUST_PROXY: value })).runtime.trustProxy;
+
+  it('defaults to trusting no proxy', () => {
+    expect(trustProxy()).toBe(false);
+  });
+
+  it.each(['false', 'no', 'off', '0'])('reads %s as no trust', (value) => {
+    expect(trustProxy(value)).toBe(false);
+  });
+
+  it.each(['true', 'yes', 'on'])('reads %s as full trust outside production', (value) => {
+    expect(trustProxy(value)).toBe(true);
+  });
+
+  /**
+   * The important one. Express reads `true` as "trust the entire
+   * X-Forwarded-For chain", which makes `req.ip` whatever the client says —
+   * and `req.ip` is both the audit field and the throttle key in mcp/auth.ts.
+   * A bare `1` almost always means "one proxy in front of me".
+   */
+  it('reads a bare number as a hop count, not as a boolean', () => {
+    expect(trustProxy('1')).toBe(1);
+    expect(trustProxy('2')).toBe(2);
+  });
+
+  it('passes an address list through untouched for Express to parse', () => {
+    expect(trustProxy('loopback,10.0.0.0/8')).toBe('loopback,10.0.0.0/8');
+  });
+
+  it('rejects a bare true in production', () => {
+    const error = expectConfigError(
+      minimalEnv({ NODE_ENV: 'production', TRUST_PROXY: 'true', MCP_AUTH_TOKEN: STRONG_TOKEN }),
+    );
+
+    expect(error.message).toContain('TRUST_PROXY');
+    expect(error.message).toContain('X-Forwarded-For');
+  });
+
+  it('accepts a hop count in production', () => {
+    const config = loadConfig(
+      minimalEnv({ NODE_ENV: 'production', TRUST_PROXY: '1', MCP_AUTH_TOKEN: STRONG_TOKEN }),
+    );
+
+    expect(config.runtime.trustProxy).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MCP_AUTH_TOKEN strength
+// ---------------------------------------------------------------------------
+
+describe('MCP_AUTH_TOKEN strength in production', () => {
+  const production = (token: string): Record<string, string> =>
+    minimalEnv({ NODE_ENV: 'production', MCP_AUTH_TOKEN: token });
+
+  it('accepts a random hex secret', () => {
+    expect(loadConfig(production(STRONG_TOKEN)).mcp.authToken).toBe(STRONG_TOKEN);
+  });
+
+  it('rejects a token under 24 characters', () => {
+    const error = expectConfigError(production('0123456789abcdefghij'));
+    expect(error.message).toContain('at least 24 characters');
+  });
+
+  it('rejects a long token built from a repeated pattern', () => {
+    const error = expectConfigError(production('abababababababababababababababab'));
+    expect(error.message).toContain('distinct characters');
+  });
+
+  it('rejects an obvious placeholder even when it is long and varied', () => {
+    const error = expectConfigError(production('dev-local-token-not-a-secret-really'));
+    expect(error.message).toContain('placeholder');
+  });
+
+  /**
+   * The stricter rules are production-only on purpose: the dev compose stack
+   * ships an obviously-fake token so `up` works on a clean checkout, and CI
+   * uses a fixed dummy. Only the 16-character floor applies everywhere.
+   */
+  it('applies only the 16-character floor outside production', () => {
+    expect(loadConfig(minimalEnv({ MCP_AUTH_TOKEN: 'aaaaaaaaaaaaaaaa' })).mcp.authToken).toBe(
+      'aaaaaaaaaaaaaaaa',
+    );
   });
 });
