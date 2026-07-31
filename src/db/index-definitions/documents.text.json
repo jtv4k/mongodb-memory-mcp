@@ -1,0 +1,23 @@
+{
+  "$comment": [
+    "Atlas Search (full-text) index for the `documents` collection.",
+    "",
+    "Used by the browse/list view and by `list_sources` substring search so those",
+    "queries do not degrade into unindexed regex collection scans as the KB grows.",
+    "Applied as code by `npm run db:indexes` — see chunks.vector.json."
+  ],
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "title": [
+        { "type": "string", "analyzer": "lucene.standard" },
+        { "type": "token", "normalizer": "lowercase" }
+      ],
+      "content": [{ "type": "string", "analyzer": "lucene.standard" }],
+      "sourceId": [{ "type": "token", "normalizer": "lowercase" }],
+      "uri": [{ "type": "string", "analyzer": "lucene.keyword" }],
+      "tags": [{ "type": "token", "normalizer": "lowercase" }],
+      "contentType": [{ "type": "token", "normalizer": "lowercase" }]
+    }
+  }
+}
