@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+.npm-cache/
+.container-home/
+src/public/css/app.css
+package-lock.json
+*.ejs
+
+# The product spec as it was handed to us. Left byte-for-byte as authored rather
+# than reflowed by a formatter.
+SPEC.md
+
+# Workflow scripts are build scaffolding, not shipped source.
+.claude/workflows/

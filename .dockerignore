@@ -1,0 +1,23 @@
+# Atlas Local bind-mount state. Excluding this is not cosmetic: mongod data files
+# and mongot index data reach gigabytes, and every one of those bytes would be
+# uploaded to the daemon as build context on each build.
+docker/atlas-local/mongod/data
+docker/atlas-local/mongot/data
+docker/atlas-local/mongod/conf/keyfile
+
+node_modules
+.npm-cache
+.container-home
+dist
+coverage
+.git
+.github
+.husky
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+**/*.log
+.DS_Store
+.idea
+.vscode
