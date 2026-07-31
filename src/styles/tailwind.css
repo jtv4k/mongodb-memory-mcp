@@ -1,0 +1,60 @@
+/*
+ * Tailwind entry point.
+ *
+ * Tailwind 4 is CSS-first: there is no `tailwind.config.js` in this project and
+ * one must not be added — configuration lives here, in CSS.
+ *
+ * `source(none)` switches OFF automatic content detection and the `@source`
+ * lines below opt each template tree back in explicitly. Two reasons:
+ *
+ *   1. Automatic detection does not know about `.ejs`, so the templates — which
+ *      hold every utility class this app uses — would be skipped and the build
+ *      would emit a nearly empty stylesheet.
+ *   2. The compiled output lands in `src/public/css/app.css`, inside the tree
+ *      that would otherwise be scanned. Explicit sources mean the build can
+ *      never read its own output back in and grow on every run.
+ *
+ * Build:  npm run build:css   ->  src/public/css/app.css  (gitignored)
+ * Watch:  npm run dev:css
+ */
+@import 'tailwindcss' source(none);
+
+@source '../views/**/*.ejs';
+
+@theme {
+  /*
+   * System font stacks only. A webfont would need a `font-src` entry in the
+   * Content-Security-Policy set by `http/web.ts` and a network round trip on
+   * first paint, and neither buys anything on an internal tool.
+   */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    'Noto Sans', sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+@layer base {
+  /*
+   * Smooth in-page jumps for the skip link and `#chunk-N` anchors, but only for
+   * users who have not asked the OS to stop animating things.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  /*
+   * `<mark>` is written by the highlighter in `services/highlight.ts` and is the
+   * one piece of generated markup on the results page. Give it a legible base
+   * appearance here so a snippet still reads correctly in dark mode and when a
+   * fragment is copied out into a context without the utility classes.
+   */
+  mark {
+    background-color: var(--color-amber-200);
+    color: var(--color-slate-900);
+    border-radius: var(--radius-sm);
+    padding-inline: 0.125rem;
+  }
+}

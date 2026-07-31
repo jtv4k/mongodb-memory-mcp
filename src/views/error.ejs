@@ -1,0 +1,46 @@
+<%#
+  The HTML error page, rendered by createErrorHandler in http/errors.ts.
+
+  Locals: status, error { code, kind, message, requestId, stack? }, requestId.
+
+  `error` is already the client-safe payload — `AppError.toClientPayload()` drops
+  the cause chain, and `stack` is only attached outside production. Structured
+  `details` are deliberately not shown: for a validation failure the message
+  already spells out every issue, and for anything else they are operator
+  information that belongs in the log, next to the request id printed below.
+-%>
+<div class="mx-auto max-w-xl py-10 text-center">
+  <p class="font-mono text-5xl font-semibold text-slate-300 tabular-nums dark:text-slate-700">
+    <%= status %>
+  </p>
+
+  <h1 class="mt-4 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+    <%= title %>
+  </h1>
+
+  <p class="mt-3 text-sm text-slate-700 dark:text-slate-300"><%= error.message %></p>
+
+  <dl
+    class="mt-6 inline-grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 rounded-xl border border-slate-200 bg-white px-5 py-4 text-left text-xs dark:border-slate-800 dark:bg-slate-900"
+  >
+    <dt class="text-slate-500 dark:text-slate-400">Code</dt>
+    <dd class="font-mono text-slate-800 dark:text-slate-200"><%= error.code %></dd>
+    <dt class="text-slate-500 dark:text-slate-400">Request id</dt>
+    <dd class="font-mono break-all text-slate-800 dark:text-slate-200"><%= requestId %></dd>
+  </dl>
+
+  <p class="mt-6 text-sm">
+    <a
+      href="/search"
+      class="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-600 dark:text-indigo-300"
+      >Back to search</a
+    >
+  </p>
+
+  <% if (error.stack) { %>
+  <%# Development only — createErrorHandler omits `stack` in production. -%>
+  <pre
+    class="mt-8 overflow-x-auto rounded-xl border border-slate-200 bg-white p-4 text-left font-mono text-[11px] leading-relaxed text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+  ><%= error.stack %></pre>
+  <% } %>
+</div>

@@ -1,0 +1,13 @@
+<%#
+  Footer. Deliberately dull: a version string is useful when someone reports a
+  bug, and nothing else here is worth a byte. No build/commit metadata, no
+  environment name — this page is reachable by anyone who can reach the port.
+-%>
+<footer class="mt-16 border-t border-slate-200 dark:border-slate-800">
+  <div
+    class="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-6 text-xs text-slate-500 sm:px-6 lg:px-10 dark:text-slate-400"
+  >
+    <p><%= appName %> <span class="font-mono">v<%= appVersion %></span></p>
+    <p>Server-rendered. No client-side JavaScript.</p>
+  </div>
+</footer>

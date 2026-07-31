@@ -1,0 +1,45 @@
+<%#
+  The single HTML document every page is rendered into.
+
+  `view` is the name of the sibling template to drop into <main>. It is ALWAYS a
+  hard-coded literal chosen by a route handler ('search', 'documents',
+  'document', 'error') — never a request value — which is why `include(view)` is
+  safe. The raw output tag used for that include composes templates; it is
+  not printing data.
+
+  The page is built to stay readable if `/css/app.css` has not been compiled yet
+  (`npm run build:css` writes it and it is gitignored, so a fresh clone has no
+  stylesheet until the first build). Everything is semantic HTML — header, nav,
+  main, headings, lists, definition lists, forms with real labels — so an
+  unstyled render is plain but entirely usable rather than a wall of divs.
+-%>
+<!doctype html>
+<html lang="en" class="h-full">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <%# Private knowledge base: never index it, and never leak the query onward. -%>
+    <meta name="robots" content="noindex, nofollow" />
+    <title><%= title %> · <%= appName %></title>
+    <link rel="stylesheet" href="/css/app.css" />
+    <%# Empty data URI: stops the browser asking for a favicon that is not there. -%>
+    <link rel="icon" href="data:," />
+  </head>
+  <body
+    class="min-h-full bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100"
+  >
+    <a
+      href="#main"
+      class="sr-only rounded-md bg-slate-900 px-4 py-2 text-white focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50"
+      >Skip to content</a
+    >
+
+    <%- include('partials/header') %>
+
+    <main id="main" class="mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 lg:px-10">
+      <%- include(view) %>
+    </main>
+
+    <%- include('partials/footer') %>
+  </body>
+</html>

@@ -1,0 +1,216 @@
+<%#
+  One document: metadata, embedding provenance, and every chunk in order.
+
+  Locals: doc (DocumentView), chunks (ChunkView list).
+
+  Chunk bodies are the rawest content in the application — whatever an AI client
+  uploaded, stored byte for byte. They go through the escaping output tag
+  inside a pre block, never the raw one. There is no highlighting on this
+  page, so nothing here needs markup and nothing here gets any.
+-%>
+<nav aria-label="Breadcrumb" class="text-xs text-slate-500 dark:text-slate-400">
+  <a
+    href="/documents"
+    class="underline underline-offset-2 hover:text-indigo-700 dark:hover:text-indigo-300"
+    >Documents</a
+  >
+  <span aria-hidden="true" class="px-1">›</span>
+  <span class="font-mono"><%= doc.sourceId %></span>
+</nav>
+
+<h1 class="mt-2 text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">
+  <%= doc.title %>
+</h1>
+
+<div class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+  <span><%= doc.contentType %></span>
+  <span><%= doc.sizeLabel %></span>
+  <span>version <%= doc.version %></span>
+  <% if (doc.uriHref) { %>
+  <a
+    href="<%= doc.uriHref %>"
+    rel="noreferrer noopener nofollow external"
+    class="max-w-md truncate underline underline-offset-2 hover:text-indigo-700 dark:hover:text-indigo-300"
+    ><%= doc.uri %></a
+  >
+  <% } else if (doc.uri) { %>
+  <span class="max-w-md truncate font-mono"><%= doc.uri %></span>
+  <% } %>
+</div>
+
+<% if (doc.tags.length > 0) { %>
+<ul class="mt-3 flex flex-wrap gap-1.5">
+  <% doc.tags.forEach(function (tag) { %>
+  <li
+    class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300"
+  >
+    <%= tag %>
+  </li>
+  <% }); %>
+</ul>
+<% } %>
+
+<div class="mt-6 grid gap-4 sm:grid-cols-2">
+  <section
+    aria-labelledby="provenance-heading"
+    class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+  >
+    <h2
+      id="provenance-heading"
+      class="text-sm font-semibold text-slate-900 dark:text-slate-100"
+    >
+      Embedding provenance
+    </h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+      <dt class="text-slate-500 dark:text-slate-400">Provider</dt>
+      <dd class="font-mono text-slate-800 dark:text-slate-200"><%= doc.embedding.provider %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Model</dt>
+      <dd class="font-mono break-all text-slate-800 dark:text-slate-200">
+        <%= doc.embedding.model %>
+      </dd>
+      <dt class="text-slate-500 dark:text-slate-400">Dimensions</dt>
+      <dd class="font-mono text-slate-800 tabular-nums dark:text-slate-200">
+        <%= doc.embedding.dimensions %>
+      </dd>
+      <dt class="text-slate-500 dark:text-slate-400">Contextual</dt>
+      <dd class="text-slate-800 dark:text-slate-200">
+        <%= doc.embedding.contextual ? 'yes — chunks embedded together' : 'no' %>
+      </dd>
+    </dl>
+  </section>
+
+  <section
+    aria-labelledby="chunking-heading"
+    class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+  >
+    <h2 id="chunking-heading" class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+      Chunking
+    </h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+      <dt class="text-slate-500 dark:text-slate-400">Strategy</dt>
+      <dd class="font-mono text-slate-800 dark:text-slate-200"><%= doc.chunking.strategy %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Chunk size</dt>
+      <dd class="text-slate-800 tabular-nums dark:text-slate-200">
+        <%= doc.chunking.chunkSizeTokens %> tokens
+      </dd>
+      <dt class="text-slate-500 dark:text-slate-400">Overlap</dt>
+      <dd class="text-slate-800 tabular-nums dark:text-slate-200">
+        <%= doc.chunking.chunkOverlapTokens %> tokens
+      </dd>
+      <dt class="text-slate-500 dark:text-slate-400">Chunks</dt>
+      <dd class="text-slate-800 tabular-nums dark:text-slate-200">
+        <%= doc.chunking.chunkCount %>
+      </dd>
+    </dl>
+  </section>
+
+  <section
+    aria-labelledby="ingest-heading"
+    class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+  >
+    <h2 id="ingest-heading" class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+      Ingest
+    </h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+      <dt class="text-slate-500 dark:text-slate-400">Channel</dt>
+      <dd class="text-slate-800 dark:text-slate-200"><%= doc.ingest.channel %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Received</dt>
+      <dd class="text-slate-800 dark:text-slate-200"><%= doc.ingest.atLabel %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Agent</dt>
+      <dd class="break-all text-slate-800 dark:text-slate-200"><%= doc.ingest.agent || '—' %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Client</dt>
+      <dd class="break-all text-slate-800 dark:text-slate-200"><%= doc.ingest.client || '—' %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Session</dt>
+      <dd class="font-mono break-all text-slate-800 dark:text-slate-200">
+        <%= doc.ingest.sessionId || '—' %>
+      </dd>
+    </dl>
+  </section>
+
+  <section
+    aria-labelledby="identity-heading"
+    class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+  >
+    <h2 id="identity-heading" class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+      Identity
+    </h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+      <dt class="text-slate-500 dark:text-slate-400">Document id</dt>
+      <dd class="font-mono break-all text-slate-800 dark:text-slate-200"><%= doc.id %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Source id</dt>
+      <dd class="font-mono break-all text-slate-800 dark:text-slate-200"><%= doc.sourceId %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Content hash</dt>
+      <dd class="font-mono text-slate-800 dark:text-slate-200"><%= doc.contentHashShort %>…</dd>
+      <dt class="text-slate-500 dark:text-slate-400">Created</dt>
+      <dd class="text-slate-800 dark:text-slate-200"><%= doc.createdLabel %></dd>
+      <dt class="text-slate-500 dark:text-slate-400">Updated</dt>
+      <dd class="text-slate-800 dark:text-slate-200"><%= doc.updatedLabel %></dd>
+    </dl>
+  </section>
+</div>
+
+<% if (doc.metadataJson) { %>
+<section aria-labelledby="metadata-heading" class="mt-4">
+  <h2 id="metadata-heading" class="text-sm font-semibold text-slate-900 dark:text-slate-100">
+    Metadata
+  </h2>
+  <pre
+    class="mt-2 overflow-x-auto rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs text-slate-800 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"
+  ><%= doc.metadataJson %></pre>
+</section>
+<% } %>
+
+<section aria-labelledby="chunks-heading" class="mt-8">
+  <h2
+    id="chunks-heading"
+    class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50"
+  >
+    Chunks
+    <span class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400"
+      >(<%= chunks.length %>, in order)</span
+    >
+  </h2>
+
+  <% if (chunks.length === 0) { %>
+  <p
+    class="mt-3 rounded-xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400"
+  >
+    This document has no chunks. That means ingestion stored the document but the embedding step
+    did not complete — re-store the content, or run <code class="font-mono">npm run db:reembed</code>.
+  </p>
+  <% } else { %>
+  <ol class="mt-3 space-y-3">
+    <% chunks.forEach(function (chunk) { %>
+    <li
+      id="chunk-<%= chunk.index %>"
+      class="rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5 dark:border-slate-800 dark:bg-slate-900"
+    >
+      <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h3 class="font-mono text-sm font-semibold text-slate-900 dark:text-slate-100">
+          #<%= chunk.index %>
+        </h3>
+        <p class="text-xs text-slate-500 dark:text-slate-400">
+          <%= chunk.tokenLabel %> · <%= chunk.rangeLabel %>
+        </p>
+      </div>
+
+      <% if (chunk.headingPath.length > 0) { %>
+      <nav aria-label="Heading path" class="mt-1 text-xs text-slate-600 dark:text-slate-400">
+        <% chunk.headingPath.forEach(function (heading, index) { %><% if (index > 0) { %>
+        <span aria-hidden="true" class="px-1 text-slate-400">›</span>
+        <% } %><span><%= heading %></span><% }); %>
+      </nav>
+      <% } %>
+
+      <pre
+        class="mt-3 max-h-96 overflow-auto rounded-lg bg-slate-50 p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-800 dark:bg-slate-950 dark:text-slate-200"
+      ><%= chunk.text %></pre>
+
+      <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+        <%= chunk.embeddingLabel %> · embedded <%= chunk.embeddedLabel %>
+      </p>
+    </li>
+    <% }); %>
+  </ol>
+  <% } %>
+</section>
