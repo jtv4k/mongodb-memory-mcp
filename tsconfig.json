@@ -1,0 +1,38 @@
+{
+  "compilerOptions": {
+    /* Language + module system: native ESM on Node 24 LTS.
+       NOTE: relative imports MUST carry an explicit `.js` extension, even when
+       importing a `.ts` source file. That is a NodeNext requirement, not a typo. */
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+
+    /* Strictness — full strict mode per spec, plus the extra safety rails that
+       matter for untrusted input coming from AI clients. */
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": false,
+    "useUnknownInCatchVariables": true,
+    "noPropertyAccessFromIndexSignature": false,
+
+    /* Emit */
+    "outDir": "dist",
+    "rootDir": ".",
+    "sourceMap": true,
+    "declaration": false,
+    "removeComments": false,
+    "isolatedModules": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["node"]
+  },
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mjs", "*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
