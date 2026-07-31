@@ -1,0 +1,190 @@
+<%#
+  Search page.
+
+  Locals: form { q, mode, tags, limit }, modes, limits, hybridEnabled,
+          results | null, searchError | null.
+
+  Every control is a plain form field named after the query parameter it sets,
+  so the form state and the URL are the same thing and a result page can be
+  bookmarked or shared. Nothing here is escaped by hand: the escaping output
+  tag does it, and the one raw output tag on the page lives in
+  partials/hit.ejs and is explained there.
+-%>
+<h1 class="text-2xl font-semibold tracking-tight text-slate-900 dark:text-slate-50">Search</h1>
+<p class="mt-2 max-w-2xl text-sm text-slate-600 dark:text-slate-300">
+  Semantic search across every ingested document. Results are ranked chunks, each linked back to
+  the document it came from.
+</p>
+
+<form
+  action="/search"
+  method="get"
+  role="search"
+  class="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900"
+>
+  <div>
+    <label for="q" class="block text-sm font-medium text-slate-800 dark:text-slate-200">
+      Query
+    </label>
+    <div class="mt-1.5 flex flex-col gap-2 sm:flex-row">
+      <input
+        id="q"
+        name="q"
+        type="search"
+        autofocus
+        autocomplete="off"
+        required
+        value="<%= form.q %>"
+        placeholder="How does the chunker handle code blocks?"
+        class="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+      />
+      <button
+        type="submit"
+        class="shrink-0 rounded-lg bg-indigo-600 px-5 py-2 font-medium text-white hover:bg-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+      >
+        Search
+      </button>
+    </div>
+  </div>
+
+  <div class="mt-4 grid gap-4 sm:grid-cols-3">
+    <div>
+      <label for="mode" class="block text-sm font-medium text-slate-800 dark:text-slate-200">
+        Mode
+      </label>
+      <select
+        id="mode"
+        name="mode"
+        class="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+      >
+        <% modes.forEach(function (option) { %>
+        <option value="<%= option.value %>" <% if (form.mode === option.value) { %>selected<% } %>>
+          <%= option.label %>
+        </option>
+        <% }); %>
+      </select>
+      <p id="mode-hint" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        Server default: <%= hybridEnabled ? 'hybrid' : 'vector' %>.
+      </p>
+    </div>
+
+    <div>
+      <label for="tags" class="block text-sm font-medium text-slate-800 dark:text-slate-200">
+        Tags
+      </label>
+      <input
+        id="tags"
+        name="tags"
+        type="text"
+        value="<%= form.tags %>"
+        placeholder="runbook, aggregation"
+        aria-describedby="tags-hint"
+        class="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+      />
+      <p id="tags-hint" class="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        Comma-separated. A chunk must carry every tag listed.
+      </p>
+    </div>
+
+    <div>
+      <label for="limit" class="block text-sm font-medium text-slate-800 dark:text-slate-200">
+        Results
+      </label>
+      <select
+        id="limit"
+        name="limit"
+        class="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100"
+      >
+        <% limits.forEach(function (size) { %>
+        <option value="<%= size %>" <% if (form.limit === size) { %>selected<% } %>>
+          <%= size %> per page
+        </option>
+        <% }); %>
+      </select>
+    </div>
+  </div>
+</form>
+
+<% if (searchError) { %>
+<div
+  role="alert"
+  class="mt-6 rounded-xl border border-red-300 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/40"
+>
+  <h2 class="text-sm font-semibold text-red-900 dark:text-red-200">Search failed</h2>
+  <p class="mt-1 text-sm text-red-800 dark:text-red-200"><%= searchError.message %></p>
+  <p class="mt-2 font-mono text-xs text-red-700 dark:text-red-300"><%= searchError.code %></p>
+</div>
+<% } else if (results) { %>
+
+<section aria-labelledby="results-heading" class="mt-8">
+  <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+    <h2
+      id="results-heading"
+      class="text-lg font-semibold tracking-tight text-slate-900 dark:text-slate-50"
+    >
+      <%= results.totalLabel %> <%= results.totalHits === 1 ? 'result' : 'results' %>
+    </h2>
+    <p class="text-xs text-slate-500 dark:text-slate-400">
+      <%= results.effectiveMode %> search · <%= results.modeDescription %> · <%= results.tookLabel %>
+      · <%= results.embedding.model %> (<%= results.embedding.dimensions %>d)
+    </p>
+  </div>
+
+  <% if (results.degraded) { %>
+  <p
+    role="status"
+    class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200"
+  >
+    <strong class="font-semibold"><%= results.mode %></strong> search was requested but only
+    <strong class="font-semibold"><%= results.effectiveMode %></strong> could run — the Atlas Search
+    text index is missing or still building. Run
+    <code class="font-mono">npm run db:indexes</code> to create it.
+  </p>
+  <% } %>
+
+  <% if (results.hits.length === 0) { %>
+  <div
+    class="mt-6 rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900"
+  >
+    <p class="text-sm font-medium text-slate-800 dark:text-slate-200">
+      Nothing matched “<%= results.query %>”.
+    </p>
+    <p class="mt-1 text-sm text-slate-600 dark:text-slate-400">
+      Try fewer tag filters, a broader phrasing, or
+      <a
+        href="/documents"
+        class="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-600 dark:text-indigo-300"
+        >browse what has been ingested</a
+      >.
+    </p>
+  </div>
+  <% } else { %>
+  <ol class="mt-4 space-y-4">
+    <% results.hits.forEach(function (hit) { %>
+    <li><%- include('partials/hit', { hit: hit, maxScore: results.maxScore }) %></li>
+    <% }); %>
+  </ol>
+  <% } %>
+</section>
+
+<% } else { %>
+
+<div
+  class="mt-8 rounded-xl border border-dashed border-slate-300 bg-white p-8 dark:border-slate-700 dark:bg-slate-900"
+>
+  <h2 class="text-sm font-semibold text-slate-800 dark:text-slate-200">Ask a question</h2>
+  <p class="mt-1 max-w-prose text-sm text-slate-600 dark:text-slate-400">
+    Queries are matched semantically, so wording does not have to line up with the source text.
+    Hybrid mode also runs a keyword pass and fuses the two rankings, which helps for exact
+    identifiers, error codes and command names.
+  </p>
+  <p class="mt-3 text-sm">
+    <a
+      href="/documents"
+      class="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-600 dark:text-indigo-300"
+      >Browse ingested documents</a
+    >
+  </p>
+</div>
+
+<% } %>
