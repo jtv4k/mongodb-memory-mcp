@@ -1,0 +1,59 @@
+#!/usr/bin/env sh
+#
+# Pre-commit gate: lint-staged, then a whole-project typecheck.
+#
+# This hook executes on the HOST, where this project guarantees nothing about
+# node — the hard rule is that no node tooling runs outside the pinned Debian
+# Node 24 container. So every command below is routed through
+# scripts/ndocker.sh, and the only host binaries required are `docker` and
+# `git` (git is, by definition, already running or this hook would not be).
+#
+# It runs in the `tooling` image rather than plain node:24-slim because
+# lint-staged shells out to git (`git stash create`, `git diff --staged`,
+# `git add`) and node:24-slim has no git. See docker/Dockerfile.
+#
+# Cost is roughly 10-15s: a couple of seconds of lint-staged over the staged
+# files only, plus tsc. Typechecking cannot be narrowed to staged files —
+# editing one module is exactly how you break a different one.
+#
+# INSTALL (needed once per clone; `npm run prepare` cannot do it from inside a
+# container that has no git):
+#
+#     git config core.hooksPath .husky
+#
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+TOOLING_IMAGE='ragkb-tooling:local'
+
+fail() {
+  printf '\n\033[1;31mpre-commit FAILED: %s\033[0m\n' "$1" >&2
+  printf 'Fix it, or bypass deliberately with: git commit --no-verify\n' >&2
+  exit 1
+}
+
+command -v docker >/dev/null 2>&1 ||
+  fail 'docker is required — all node tooling for this project runs in a container'
+
+if ! docker image inspect "$TOOLING_IMAGE" >/dev/null 2>&1; then
+  printf 'pre-commit: building %s (one time, ~30s)...\n' "$TOOLING_IMAGE"
+  docker build --file docker/Dockerfile --target tooling --tag "$TOOLING_IMAGE" . ||
+    fail "could not build $TOOLING_IMAGE"
+fi
+
+# lint-staged creates a backup stash, which writes a commit object and therefore
+# needs a committer identity. The container has no ~/.gitconfig (ndocker.sh sets
+# HOME=/tmp), so supply a throwaway one — it never reaches a real commit.
+printf 'pre-commit: lint-staged\n'
+NODE_IMAGE="$TOOLING_IMAGE" ./scripts/ndocker.sh sh -c '
+  GIT_AUTHOR_NAME=pre-commit GIT_AUTHOR_EMAIL=pre-commit@localhost \
+  GIT_COMMITTER_NAME=pre-commit GIT_COMMITTER_EMAIL=pre-commit@localhost \
+  exec npx --no-install lint-staged
+' || fail 'lint-staged reported problems'
+
+printf 'pre-commit: typecheck\n'
+NODE_IMAGE="$TOOLING_IMAGE" ./scripts/ndocker.sh npx --no-install tsc --noEmit ||
+  fail 'tsc --noEmit reported type errors'
+
+printf '\033[1;32mpre-commit: ok\033[0m\n'

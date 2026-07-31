@@ -1,0 +1,121 @@
+# Development override. It is NOT usable on its own — always pass both files:
+#
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up
+#
+# It adds Atlas Local and turns the app service into a bind-mounted watch
+# process. Only the differences from docker-compose.yml appear here.
+
+services:
+  # -------------------------------------------------------------------------
+  # Atlas Local — mongod + mongot in one container, so $search and
+  # $vectorSearch behave exactly as they do in cloud Atlas.
+  # -------------------------------------------------------------------------
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0
+    restart: unless-stopped
+    ports:
+      # Published so host tooling (mongosh, Compass, `npm run db:indexes` from
+      # the host container) can reach the same instance the app uses.
+      - '${MONGODB_HOST_PORT:-27017}:27017'
+
+    volumes:
+      # Bind mounts rather than named volumes: the local knowledge base stays
+      # visible and inspectable on the host and survives `docker compose down -v`.
+      # Sources are relative to this file's directory (docker/). The full map
+      # lives in docker/atlas-local/README.md.
+      - ./atlas-local/mongod/data:/data/db
+      # /data/configdb also holds the single shared keyfile that `runner`
+      # generates on first boot and that both mongod and mongot authenticate
+      # with. Do NOT mount ./atlas-local/mongot/keyfile — it is documentation
+      # only, and a second, divergent keyfile breaks intra-cluster auth.
+      - ./atlas-local/mongod/conf:/data/configdb
+      # /data/mongot is NOT declared as a VOLUME by the image, so without this
+      # mount every Atlas Search / Vector Search index is silently discarded the
+      # moment the container is recreated, and `npm run db:indexes` has to be
+      # re-run (and re-waited-on) from scratch.
+      - ./atlas-local/mongot/data:/data/mongot
+
+    # The image runs mongod as uid/gid 1000:1000, which matches the usual first
+    # host account, so the bind mounts above need no chown. If your host uid is
+    # not 1000 mongod cannot write and the container restart-loops — see
+    # docker/atlas-local/README.md for the fix.
+
+    healthcheck:
+      # The same command the image's own HEALTHCHECK uses, restated so these
+      # timings apply. First boot has to initialise a single-node replica set
+      # and start mongot, which takes 20-40s on a warm image and longer on a
+      # cold one; without a generous start_period the app's depend_on gives up
+      # before Mongo was ever going to be reachable.
+      test: ['CMD', '/usr/local/bin/runner', 'healthcheck']
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 90s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  app:
+    build:
+      target: dev
+      args:
+        NODE_ENV: development
+    # Tagged separately so a dev build never overwrites the production tag.
+    image: ragkb-app:dev
+    command: ['npm', 'run', 'dev']
+    # Overrides the base file's `unless-stopped`. If the process cannot start at
+    # all — a bad env var, a missing module — you want to read the error once,
+    # not watch it scroll past in a restart loop.
+    restart: 'no'
+
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+    # NOTE ON PRECEDENCE: entries written as `KEY=value` here beat anything in
+    # the base file's `env_file: ../.env`. That is deliberate for MONGODB_URI
+    # (dev's database lives on the compose network, not wherever .env points),
+    # but it does mean MONGODB_DB_NAME, LOG_LEVEL and MCP_AUTH_TOKEN must be
+    # overridden from the shell or via `--env-file`, not from ../.env. The
+    # defaults below exist so `up` works on a clean checkout with no .env at all.
+    environment:
+      - NODE_ENV=development
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      # Human-readable pino output via pino-pretty; production stays NDJSON.
+      - LOG_PRETTY=true
+      # directConnection=true because Atlas Local advertises its replica set
+      # member under the container's own hostname, which the driver cannot
+      # resolve from another container on the compose network.
+      - MONGODB_URI=mongodb://mongodb:27017/?directConnection=true
+      - MONGODB_DB_NAME=${MONGODB_DB_NAME:-rag_kb_dev}
+      # Obviously-not-a-secret default so `up` works on a clean checkout with no
+      # .env; zod only requires >= 16 characters. Override it for anything that
+      # is reachable from outside your machine.
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-dev-local-token-not-a-secret}
+
+    volumes:
+      # Host source mounted read-write so `tsx watch` picks up IDE saves with no
+      # rebuild and no container restart. Paths are relative to docker/, hence
+      # the leading `../`. The container runs as uid 1000, which owns these
+      # files on the host, so nothing needs chown-ing.
+      - ../src:/app/src
+      - ../tests:/app/tests
+      - ../scripts:/app/scripts
+      - ../package.json:/app/package.json
+      - ../package-lock.json:/app/package-lock.json
+      - ../tsconfig.json:/app/tsconfig.json
+      - ../tsconfig.build.json:/app/tsconfig.build.json
+      - ../vitest.config.ts:/app/vitest.config.ts
+      - ../eslint.config.js:/app/eslint.config.js
+      - ../.prettierrc.json:/app/.prettierrc.json
+      # node_modules must stay container-owned. The host tree is installed for
+      # the host platform (and may not exist at all), so letting it show through
+      # at /app/node_modules is the classic "Cannot find module 'express'" —
+      # this named volume masks it with the image's own install.
+      - node_modules:/app/node_modules
+
+volumes:
+  node_modules:

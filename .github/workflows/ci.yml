@@ -1,0 +1,143 @@
+name: CI
+
+# No untrusted event data (issue/PR titles, branch names, commit messages) is
+# interpolated into any `run:` block in this workflow. The only ${{ }}
+# expressions are github.workflow / github.ref inside `concurrency`, which is
+# not a shell context.
+
+on:
+  push:
+  pull_request:
+
+# A newer push to the same ref makes the in-flight run pointless; the
+# integration job holds a container for several minutes, so cancelling matters.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    name: Lint, format, typecheck, unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Single source of truth for the Node version; the same file the local
+          # container wrapper and package.json "engines" agree with.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # `npm test` is the unit project only. It must never need a database or a
+      # third-party API key, so it is the gate everything else waits on.
+      - name: Unit tests
+        run: npm test
+
+  integration:
+    name: Integration tests (Atlas Local)
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      # The Atlas Local container is published on the runner's loopback address.
+      # directConnection=true because the replica set advertises its member
+      # under the container hostname, which the runner cannot resolve.
+      MONGODB_URI: mongodb://127.0.0.1:27017/?directConnection=true
+      # MONGODB_DB_NAME is deliberately NOT set here: tests/integration/setup.ts
+      # randomises a database name per run so concurrent runs cannot collide.
+      #
+      # The fake embedding provider is used because CI must not depend on a
+      # third-party API key — a pull request from a fork has no access to
+      # secrets, and a Voyage outage must not turn every build red. The fake
+      # provider is deterministic and emits real 1024-dim vectors, so
+      # $vectorSearch, the index definitions and the RRF fusion are all
+      # genuinely exercised. A live-Voyage suite exists and is opt-in: set the
+      # VOYAGE_API_KEY secret and run it separately, not on every push.
+      EMBEDDING_PROVIDER: fake
+      # Left at the default voyage-context-3 / 1024 so CI exercises the
+      # contextual (grouped-by-document) embedding path that production uses.
+      EMBEDDING_DIMENSIONS: '1024'
+      # Dummy value; zod only enforces a 16-character minimum. Not a secret.
+      MCP_AUTH_TOKEN: ci-not-a-real-secret-token
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # A plain `docker run` rather than a `services:` block. GitHub's services
+      # ignore an image's built-in HEALTHCHECK unless it is restated in
+      # `options:`, and "healthy" there still only means the supervisor is up —
+      # it does not mean the replica set will accept a write. Doing it by hand
+      # keeps the readiness contract explicit and the failure output readable.
+      - name: Start Atlas Local
+        run: |
+          docker run --detach --name atlas-local \
+            --publish 27017:27017 \
+            mongodb/mongodb-atlas-local:8.0
+
+      - name: Wait for Atlas Local to be ready
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+
+          # Gate 1: the image's own supervisor healthcheck (mongod up, mongot up).
+          echo 'waiting for container health...'
+          until [ "$(docker inspect -f '{{.State.Health.Status}}' atlas-local)" = 'healthy' ]; do
+            sleep 3
+          done
+
+          # Gate 2: an actual write through the replica set. Only this proves the
+          # node has finished electing itself primary and will accept the index
+          # creation the next step performs.
+          echo 'waiting for a writable primary...'
+          until docker exec atlas-local mongosh --quiet \
+            --eval 'db.getSiblingDB("ci_readiness").probe.insertOne({ at: new Date() })' >/dev/null 2>&1; do
+            sleep 3
+          done
+
+          echo 'atlas local is ready'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Smoke-tests the index-definition CLI against a real mongot: it must be
+      # able to create both Atlas Search indexes and the vector index and wait
+      # for them to become queryable. It uses its own fixed database because the
+      # per-run database the tests use does not exist yet at this point.
+      - name: Apply index definitions
+        run: npm run db:indexes
+        env:
+          MONGODB_DB_NAME: ragkb_ci_index_smoke
+
+      - name: Integration tests
+        run: npm run test:integration
+
+      - name: Atlas Local logs
+        if: failure()
+        run: docker logs atlas-local

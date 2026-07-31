@@ -1,0 +1,106 @@
+# Production-shaped stack: the app, and deliberately nothing else.
+#
+# MONGODB_URI is expected to point at **cloud Atlas** (mongodb+srv://...). There
+# is no database service in this file because production does not run one — see
+# docker-compose.dev.yml for the Atlas Local container used by dev and CI.
+#
+#   docker compose -f docker/docker-compose.yml up -d --build
+#
+# Configuration comes from the host environment and/or a git-ignored .env at the
+# project root (copy .env.example). No secret is ever written into this file.
+#
+# Note the build context: this file lives in docker/ but the application source
+# does not, so the context is the project root and `dockerfile:` is resolved
+# relative to it. Every bind-mount source path is relative to docker/.
+
+name: ragkb
+
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: prod
+      args:
+        NODE_ENV: production
+    image: ragkb-app:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    # PID 1 reaping and SIGTERM forwarding, so the app's graceful-shutdown path
+    # actually runs. This is why the image does not bundle tini.
+    init: true
+
+    # Optional so `docker compose config` and CI both work without a .env file
+    # present. Anything genuinely required is validated by zod at startup, which
+    # fails fast with every missing variable listed at once.
+    env_file:
+      - path: ../.env
+        required: false
+
+    # List form, not map form, on purpose. An entry with no `=` is passed
+    # through from the host environment *only if it is set there*; an entry
+    # written as `KEY=${KEY:-}` would instead inject an empty string and
+    # silently override the value that came from env_file.
+    environment:
+      # Fixed by the container topology rather than by the operator.
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=${PORT:-3000}
+      # Everything below is host-environment or env_file supplied.
+      - LOG_LEVEL
+      - LOG_PRETTY
+      - SHUTDOWN_TIMEOUT_MS
+      - MONGODB_URI
+      - MONGODB_DB_NAME
+      - MONGODB_MAX_POOL_SIZE
+      - MONGODB_SERVER_SELECTION_TIMEOUT_MS
+      - MONGODB_VECTOR_INDEX_NAME
+      - MONGODB_TEXT_INDEX_NAME
+      - MONGODB_DOCUMENTS_TEXT_INDEX_NAME
+      - EMBEDDING_PROVIDER
+      - EMBEDDING_MODEL
+      - EMBEDDING_DIMENSIONS
+      - EMBEDDING_BATCH_SIZE
+      - VOYAGE_API_KEY
+      - VOYAGE_API_BASE_URL
+      - CHUNK_SIZE_TOKENS
+      - CHUNK_OVERLAP_TOKENS
+      - CHUNK_MIN_TOKENS
+      - MCP_AUTH_TOKEN
+      - MCP_PATH
+      - MCP_DNS_REBINDING_PROTECTION
+      - MCP_ALLOWED_HOSTS
+      - MCP_ALLOWED_ORIGINS
+      - SEARCH_DEFAULT_LIMIT
+      - SEARCH_MAX_LIMIT
+      - SEARCH_HYBRID_ENABLED
+      - SEARCH_VECTOR_WEIGHT
+      - WEB_UI_ENABLED
+      - TRUST_PROXY
+
+    # HOST_PORT defaults to whatever PORT is, so setting PORT alone stays
+    # coherent; set HOST_PORT only when the published port must differ.
+    ports:
+      - '${HOST_PORT:-${PORT:-3000}}:${PORT:-3000}'
+
+    # Mirrors the image's own HEALTHCHECK. Restated here so the timings are
+    # visible and tunable per environment, and so `docker compose ps` reports
+    # health even when the image is replaced by a pre-built tag.
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - const p=process.env.PORT||3000;fetch('http://127.0.0.1:'+p+'/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    # pino emits one JSON object per line to stdout. Cap the local json-file
+    # driver so a chatty container cannot fill the host disk; a real deployment
+    # should point this at whatever ships logs off the box.
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
