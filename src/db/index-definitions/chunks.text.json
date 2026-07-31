@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "Atlas Search (full-text) index for the `chunks` collection.",
+    "",
+    "Powers the keyword half of hybrid search and the snippet highlighting shown in",
+    "the web UI. Applied as code by `npm run db:indexes` — see chunks.vector.json.",
+    "",
+    "`dynamic: false` is deliberate: indexing the 1024-float `embedding` array as",
+    "text would be a large, useless waste of index space."
+  ],
+  "mappings": {
+    "dynamic": false,
+    "fields": {
+      "text": [{ "type": "string", "analyzer": "lucene.standard" }],
+      "title": [{ "type": "string", "analyzer": "lucene.standard" }],
+      "headingPath": [{ "type": "string", "analyzer": "lucene.standard" }],
+      "tags": [{ "type": "token", "normalizer": "lowercase" }],
+      "sourceId": [{ "type": "token", "normalizer": "lowercase" }],
+      "contentType": [{ "type": "token", "normalizer": "lowercase" }],
+      "embeddingModel": [{ "type": "token", "normalizer": "lowercase" }],
+      "documentId": [{ "type": "objectId" }]
+    }
+  }
+}

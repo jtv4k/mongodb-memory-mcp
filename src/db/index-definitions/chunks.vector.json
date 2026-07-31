@@ -1,0 +1,32 @@
+{
+  "$comment": [
+    "Atlas Vector Search index for the `chunks` collection.",
+    "",
+    "This file is the CANONICAL definition. It is applied by `npm run db:indexes`",
+    "(src/db/indexes.ts) to Atlas Local and to cloud Atlas identically. Never create",
+    "or edit this index by hand in the Atlas UI — the UI is not the source of truth.",
+    "",
+    "numDimensions is overridden at apply time from EMBEDDING_DIMENSIONS so the",
+    "index always matches the configured model. The value below is the shipped",
+    "default (voyage-context-3 @ 1024).",
+    "",
+    "Every `filter` path is a field a search may narrow on. $vectorSearch can ONLY",
+    "filter on paths declared here, which is why chunks denormalise their parent's",
+    "tags/contentType. `embeddingModel` is a filter so a re-embedding backfill can",
+    "search old and new vectors separately while it runs."
+  ],
+  "fields": [
+    {
+      "type": "vector",
+      "path": "embedding",
+      "numDimensions": 1024,
+      "similarity": "cosine"
+    },
+    { "type": "filter", "path": "sourceId" },
+    { "type": "filter", "path": "documentId" },
+    { "type": "filter", "path": "tags" },
+    { "type": "filter", "path": "contentType" },
+    { "type": "filter", "path": "embeddingModel" },
+    { "type": "filter", "path": "embeddingDimensions" }
+  ]
+}
