@@ -24,6 +24,12 @@ services:
       args:
         NODE_ENV: production
     image: ragkb-app:${IMAGE_TAG:-local}
+    # A stable hostname so log lines and `docker compose ps` identify the
+    # process rather than a random container ID. Deliberately NO
+    # `container_name:` here — Compose forbids scaling a service that declares
+    # one, and this file is the production-shaped stack. The dev override sets
+    # both, because there is only ever one dev container.
+    hostname: ragkb-app
     restart: unless-stopped
     # PID 1 reaping and SIGTERM forwarding, so the app's graceful-shutdown path
     # actually runs. This is why the image does not bundle tini.

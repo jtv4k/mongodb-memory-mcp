@@ -13,6 +13,23 @@ services:
   mongodb:
     image: mongodb/mongodb-atlas-local:8.0
     restart: unless-stopped
+
+    # BOTH OF THESE ARE LOAD-BEARING. `runner` initiates the replica set using
+    # the container's hostname, and persists that name into /data/db as the
+    # replica set name *and* its only member host. Docker defaults a container's
+    # hostname to the container ID, which changes every time the container is
+    # recreated — so with the bind mounts below, the second `up` starts a
+    # container that is not a member of the replica set it just loaded. It never
+    # elects a primary and never becomes healthy; the logs show NodeNotFound,
+    # "Locally stored replica set configuration", "No primary exists currently"
+    # and an endless stream of ReadConcernMajorityNotAvailableYet.
+    #
+    # Pinning the hostname keeps the stored config valid across recreation.
+    # Changing this value later invalidates the existing mongod/data/ the same
+    # way a container ID did — see docker/atlas-local/README.md.
+    container_name: ragkb-mongodb
+    hostname: ragkb-mongodb
+
     ports:
       # Published so host tooling (mongosh, Compass, `npm run db:indexes` from
       # the host container) can reach the same instance the app uses.
@@ -65,6 +82,11 @@ services:
         NODE_ENV: development
     # Tagged separately so a dev build never overwrites the production tag.
     image: ragkb-app:dev
+    # Static for the same reason as mongodb above: a stable name to exec into
+    # and a stable hostname in the logs. The app holds no persistent state
+    # keyed by hostname, so this one is convenience rather than correctness.
+    container_name: ragkb-app-dev
+    hostname: ragkb-app-dev
     command: ['npm', 'run', 'dev']
     # Overrides the base file's `unless-stopped`. If the process cannot start at
     # all — a bad env var, a missing module — you want to read the error once,

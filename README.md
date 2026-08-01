@@ -1,15 +1,18 @@
 # MongoDB RAG KB MCP
 
-An MCP server backed by a MongoDB knowledge base.
+Have you ever explained the same thing to an AI assistant three times in one
+week? I have. The context window closes, the session ends, and everything the
+assistant learned goes with it.
 
-AI clients hand it content over the [Model Context Protocol](https://modelcontextprotocol.io);
-it splits that content with a structure-aware chunker, embeds the chunks with
-Voyage AI, and stores them in MongoDB with Atlas Vector Search + Atlas Search
-indexes. Anything stored can then be retrieved semantically — by an MCP client,
-by a REST call, or through a small server-rendered web UI — with the source
-document, heading breadcrumb and relevance score attached to every hit.
+This is my answer to that. It is an MCP server sitting on top of MongoDB. An AI
+client hands it content over the [Model Context Protocol](https://modelcontextprotocol.io);
+the server splits that content with a structure-aware chunker, embeds the chunks
+with Voyage AI, and stores them in MongoDB behind Atlas Vector Search and Atlas
+Search indexes. Later — a different session, a different client, a different
+week — you ask a question in plain language and get the relevant passages back,
+each one carrying its source document, heading breadcrumb and relevance score.
 
-One Node process serves all three surfaces on one port:
+One Node process serves three surfaces on one port:
 
 | Surface               | Where                   | Auth                               |
 | --------------------- | ----------------------- | ---------------------------------- |
@@ -18,23 +21,21 @@ One Node process serves all three surfaces on one port:
 | Web UI                | `/search`, `/documents` | none (server-rendered, read-only)  |
 | Health probes         | `/healthz`, `/readyz`   | none                               |
 
-MCP tools: `store_content`, `search_knowledge`, `list_sources`,
+Four MCP tools: `store_content`, `search_knowledge`, `list_sources`,
 `delete_content`.
 
 ---
 
-## Prerequisites
+## What you need
 
-- **Docker** and **Docker Compose v2+**. That is the whole list.
-- **You do not need Node on your machine.** This is unusual, so to be explicit:
-  every `npm`, `tsc`, `vitest` and `eslint` invocation in this repo runs inside a
-  pinned `node:24-slim` container. `./scripts/ndocker.sh` is the wrapper; the dev
-  stack runs the app in a container too. Installing Node locally is not
-  required and not used.
-- A **Voyage AI API key** for real ingestion (<https://voyageai.com>). Not needed
-  for tests — those run against a deterministic offline embedder.
-- Roughly 4 GB of free RAM for the Atlas Local container. It has been
-  OOM-killed on smaller machines.
+- **Docker** and **Docker Compose v2+**.
+- **No Node on your machine.** Every `npm`, `tsc`, `vitest` and `eslint` command
+  in this repository runs inside a pinned `node:24-slim` container.
+  `./scripts/ndocker.sh` is the wrapper, and the dev stack runs the app in a
+  container too. Installing Node locally is neither required nor used.
+- A **Voyage AI API key** (<https://voyageai.com>) for real ingestion. The tests
+  do not need one — they run against a deterministic offline embedder.
+- Roughly **4 GB of free RAM** for the Atlas Local container.
 
 ---
 
@@ -46,93 +47,91 @@ MCP tools: `store_content`, `search_knowledge`, `list_sources`,
 cp .env.example .env
 ```
 
-`.env` is gitignored and must never be committed.
+`.env` is gitignored. Keep it that way.
 
-**Must be filled in:**
+Two variables you must fill in:
 
-| Variable          | Notes                                                                                                                                                                                                                     |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VOYAGE_API_KEY`  | Required whenever `EMBEDDING_PROVIDER=voyage`, which is the default. Set `EMBEDDING_PROVIDER=fake` to run the whole stack with no key at all (useful for a first look; the vectors are real but the semantics are crude). |
-| `MCP_AUTH_TOKEN`  | Minimum 16 characters. Generate one: `openssl rand -hex 32`                                                                                                                                                               |
-| `MONGODB_URI`     | Only for the production/cloud-Atlas stack. The dev stack sets it for you (see below).                                                                                                                                     |
-| `MONGODB_DB_NAME` | Same — dev defaults to `rag_kb_dev`.                                                                                                                                                                                      |
+| Variable         | Notes                                                                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VOYAGE_API_KEY` | Required whenever `EMBEDDING_PROVIDER=voyage`, which is the default. Set `EMBEDDING_PROVIDER=fake` to run the whole stack with no key at all — the vectors are real, the semantics are crude, and it costs nothing. |
+| `MCP_AUTH_TOKEN` | Minimum 16 characters. Generate one with `openssl rand -hex 32`.                                                                                                                                                    |
 
-**Working defaults for everything else**, including
+`MONGODB_URI` and `MONGODB_DB_NAME` matter only for the production stack; dev
+sets both for you. Everything else already has a working default —
 `EMBEDDING_MODEL=voyage-context-3`, `EMBEDDING_DIMENSIONS=1024`,
-`CHUNK_SIZE_TOKENS=512`, `CHUNK_OVERLAP_TOKENS=64`, `PORT=3000`, `MCP_PATH=/mcp`,
-`SEARCH_HYBRID_ENABLED=true`. The full schema, with the defaults and the
-cross-field rules, is `src/config/env.ts` — that file is the source of truth.
+`CHUNK_SIZE_TOKENS=512`, `CHUNK_OVERLAP_TOKENS=64`, `PORT=3000`,
+`MCP_PATH=/mcp`, `SEARCH_HYBRID_ENABLED=true`, and about thirty more. The full
+schema, including the cross-field rules, lives in `src/config/env.ts`.
 
-> **Dev-stack precedence gotcha.** `docker/docker-compose.dev.yml` sets
-> `NODE_ENV`, `LOG_LEVEL`, `LOG_PRETTY`, `MONGODB_URI`, `MONGODB_DB_NAME` and
-> `MCP_AUTH_TOKEN` directly in its `environment:` block, and an entry there beats
-> `env_file: ../.env`. `MONGODB_URI` must be overridden — dev's database lives on
-> the compose network, not wherever `.env` points. The consequence is that in dev
-> your `.env` value for `MCP_AUTH_TOKEN` is **ignored** unless you also make it
-> visible to compose's interpolation:
->
-> ```bash
-> docker compose --env-file .env \
->   -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up
-> ```
->
-> Without `--env-file`, dev falls back to the obviously-not-a-secret token
-> `dev-local-token-not-a-secret`. That is fine on a laptop and unacceptable
-> anywhere reachable. `VOYAGE_API_KEY` is _not_ affected — it is passed through
-> from `env_file` normally.
-
-### 2. Bring up the dev stack
-
-Always pass **both** `-f` files. The dev file is an override and does nothing on
-its own.
+The file `docker/docker-compose.dev.yml` sets
+`NODE_ENV`, `LOG_LEVEL`, `LOG_PRETTY`, `MONGODB_URI`, `MONGODB_DB_NAME` and
+`MCP_AUTH_TOKEN` in its `environment:` block, and an entry there beats
+`env_file: ../.env`. That's important to remember for `MONGODB_URI` -- the URI
+will work from the docker compose file over `.env`. That also means
+your `.env` token is ignored in dev unless you also hand it to compose's
+interpolation:
 
 ```bash
 docker compose --env-file .env \
   -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up
 ```
 
-This starts two services:
+The dev environment falls back to the token `dev-local-token-not-a-secret` without `--env-file`, which is exactly as secure as it sounds. `VOYAGE_API_KEY` is unaffected — it comes through `env_file` normally if it's not set in compose.
 
-- **`mongodb`** — `mongodb/mongodb-atlas-local:8.0`, published on `localhost:27017`.
-  It runs `mongod` _and_ `mongot`, which is why `$search` and `$vectorSearch`
-  work locally exactly as they do in cloud Atlas.
-- **`app`** — the server in `tsx watch` mode with `src/` bind-mounted, published
-  on `localhost:3000`. Edits from your editor reload with no rebuild.
+### 2. Bring up the dev stack
+
+Pass **both** `-f` files; later overrides.
+
+```bash
+docker compose --env-file .env \
+  -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up
+```
+
+That starts two services:
+
+- **`mongodb`** — `mongodb/mongodb-atlas-local:8.0` on `localhost:27017`. It
+  runs `mongod` _and_ `mongot`, which is the whole reason `$search` and
+  `$vectorSearch` behave locally exactly as they do in cloud Atlas.
+- **`app`** — the server under `tsx watch` with `src/` bind-mounted, on
+  `localhost:3000`. Save a file in your editor and it reloads. No rebuild.
 
 First boot takes 20–40 seconds while Atlas Local initialises a single-node
-replica set and starts `mongot`. The app waits for it. Watch progress with
-`docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml logs -f mongodb`.
+replica set and starts `mongot`. The app waits for it.
 
 ### 3. Apply the index definitions
 
-Search will return nothing until you do this. The definitions live in
-`src/db/index-definitions/*.json` and are applied as code — never by hand in the
-Atlas UI.
+Do not skip this one. Search returns nothing until you run it.
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
   run --rm app npm run db:indexes
 ```
 
-It prints a table of every standard, Atlas Search and Vector Search index with
-`created` / `updated` / `unchanged` and whether each is queryable, then waits for
-the search indexes to finish building. Re-running it is safe and idempotent —
-it is the deploy-time migration step. Add `-- --dry-run` to see the plan without
-writing anything.
+The definitions live in `src/db/index-definitions/*.json` and are applied as
+code — never by hand in the Atlas UI, because the UI is not the source of truth
+and cloud Atlas would drift from your laptop within a day. The command prints
+every standard, Atlas Search and Vector Search index as `created`, `updated` or
+`unchanged`, reports whether each is queryable, then waits for the search
+indexes to finish building. It is idempotent, so re-running it is safe; this is
+the deploy-time migration step. Add `-- --dry-run` to see the plan and write
+nothing.
 
 ### 4. Open the UI
 
-<http://localhost:3000/search> — search box, ranked results with source, heading
-breadcrumb, score and highlighted snippet.
-<http://localhost:3000/documents> — browse what has been ingested.
+<http://localhost:3000/search> is the search page — query box, ranked results,
+each with its source, heading breadcrumb, score and a highlighted snippet.
+<http://localhost:3000/documents> browses what you have ingested, and each
+document has its own page. `/` redirects to `/search`.
 
 ---
 
 ## Using the REST API
 
-Every `/api/*` route requires the token, **reads included**. That is deliberate:
-the process is network-reachable, and an open read surface would hand the entire
-knowledge base to anyone who can reach the port.
+Every `/api/*` route requires the token, **reads included**. That is deliberate,
+and I will defend it: the process is network-reachable, so an open read surface
+hands your entire knowledge base to anyone who can reach the port. The direct
+consequence is that the web pages call the service in-process instead of
+fetching `/api/*`, so no token ever reaches a browser.
 
 ```bash
 export TOKEN='<your MCP_AUTH_TOKEN>'
@@ -165,9 +164,9 @@ curl -sS -X DELETE "$BASE/api/content?sourceId=demo/vector-search" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-Full route list:
+The full route list:
 
-| Method   | Path                                                                  | Service call                                                             |
+| Method   | Path                                                                  | What it does                                                             |
 | -------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `POST`   | `/api/content`                                                        | `storeContent` — 201 when created, 200 when updated or unchanged         |
 | `GET`    | `/api/search?q=&limit=&mode=&tags=&sourceIds=&minScore=&includeText=` | `searchKnowledge`                                                        |
@@ -177,15 +176,24 @@ Full route list:
 | `DELETE` | `/api/content`                                                        | `deleteContent` — selector in the body or the query string               |
 | `GET`    | `/api/embedding-coverage`                                             | which embedding models the corpus actually contains                      |
 
-List parameters accept both `?tags=a,b` and `?tags=a&tags=b`.
+List parameters accept either form: `?tags=a,b` or `?tags=a&tags=b`.
+
+Search runs in one of three modes. `vector` is pure `$vectorSearch`, `text` is
+pure `$search`, and `hybrid` — the default — runs both legs and fuses them in
+application code with reciprocal rank fusion. Why fuse in the application rather
+than use `$rankFusion`? Three reasons. First, Atlas Local and cloud Atlas then
+rank identically, so nothing "works locally and ranks differently in
+production." Second, the ranking becomes a pure function that unit tests can
+exercise exhaustively without a database. Third, we keep each leg's raw score
+and rank on every hit, which a server-side fusion stage does not surface.
 
 ---
 
 ## Connecting an MCP client
 
-The transport is **Streamable HTTP** at `http://localhost:3000/mcp` (configurable
-with `MCP_PATH`), authenticated with the same bearer token. For a client that
-reads an `mcp.json`-style config:
+The transport is **Streamable HTTP** at `http://localhost:3000/mcp` (change the
+path with `MCP_PATH`), authenticated with the same bearer token. For a client
+that reads an `mcp.json`-style config:
 
 ```json
 {
@@ -201,7 +209,7 @@ reads an `mcp.json`-style config:
 }
 ```
 
-Sanity check with curl — an unauthenticated request must be rejected:
+Sanity check it with curl. An unauthenticated request must be rejected:
 
 ```bash
 curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$BASE/mcp"       # 401
@@ -209,7 +217,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$BASE/mcp"       # 401
 
 ---
 
-## Development commands
+## Development
 
 All Node tooling runs in a container. Run these from the project root.
 
@@ -221,7 +229,7 @@ All Node tooling runs in a container. Run these from the project root.
 ./scripts/ndocker.sh npm test               # unit tests: no database, no network
 ```
 
-Run a single unit file:
+A single unit file:
 
 ```bash
 ./scripts/ndocker.sh npx vitest run --project unit tests/unit/chunking.test.ts
@@ -229,15 +237,15 @@ Run a single unit file:
 
 ### Integration tests
 
-These need Atlas Local reachable on `127.0.0.1:27017`. The dev stack publishes
-it there. Each run picks a randomised, conflict-checked database name
-(`ragkb_test_…`) and drops it afterwards, so it will not disturb your dev data,
-and concurrent runs cannot collide. They use the deterministic offline embedder,
-so **no Voyage key is required**.
+These want Atlas Local on `127.0.0.1:27017`, which the dev stack publishes. Each
+run picks a randomised database name (`ragkb_test_…`), checks nobody else
+claimed it first, and drops it afterwards — so it will not disturb your dev data
+and concurrent runs cannot collide. They use the offline embedder, so no Voyage
+key is required.
 
-`ndocker.sh` uses the default bridge network, from which the published port is
-not reachable on Linux, so run this one on the host network — still a container,
-so the no-host-Node rule holds:
+`ndocker.sh` uses the default bridge network, and on Linux the published port is
+not reachable from there. Run this one on the host network instead — still a
+container, so the no-host-Node rule holds:
 
 ```bash
 mkdir -p .container-home/tmp
@@ -253,13 +261,15 @@ docker run --rm --network host -u "$(id -u):$(id -g)" -v "$PWD":/app -w /app \
   node:24-slim npx vitest run --project integration
 ```
 
-`HOME`, the XDG directories, `TMPDIR` and the npm cache are pinned inside `/app`
-on purpose: this project never writes outside its own directory.
+`HOME`, the XDG directories, `TMPDIR` and the npm cache all point inside `/app`
+on purpose. This project writes nothing outside its own directory, and that
+includes stray cache entries and npm logfiles.
 
 ### Pre-commit hook
 
-Lint-staged plus a whole-project typecheck, both in a container. Install once per
-clone (npm's `prepare` cannot do it from inside a container with no git):
+Lint-staged plus a whole-project typecheck, both in a container. Install it once
+per clone — npm's `prepare` cannot, since it runs inside a container with no
+git:
 
 ```bash
 git config core.hooksPath .husky
@@ -267,9 +277,9 @@ git config core.hooksPath .husky
 
 ---
 
-## Building the production image
+## Building for production
 
-`docker/Dockerfile` is multi-stage; `prod` is the default target.
+`docker/Dockerfile` is multi-stage and `prod` is the default target.
 
 ```bash
 docker build -f docker/Dockerfile -t ragkb-app:local .
@@ -280,15 +290,16 @@ It compiles TypeScript, builds the Tailwind stylesheet, copies `views/` and
 dependencies only, running as the unprivileged `node` user with a `HEALTHCHECK`
 on `/healthz`.
 
-The production compose stack has **no database service** — production points at
-cloud Atlas via `MONGODB_URI`:
+The production compose stack has **no database service**, because production
+points at cloud Atlas through `MONGODB_URI`:
 
 ```bash
 docker compose -f docker/docker-compose.yml up -d --build
 ```
 
-Apply the same index definitions to the cloud cluster with the same command
-(`npm run db:indexes`); only `MONGODB_URI` differs.
+Apply the index definitions to the cloud cluster with the same
+`npm run db:indexes` command. Only `MONGODB_URI` differs. That is the point of
+keeping them as code.
 
 ---
 
@@ -317,63 +328,104 @@ Apply the same index definitions to the cloud cluster with the same command
 
 ---
 
-## Troubleshooting
+## When something goes wrong
 
-**Atlas Local takes forever to come up / the app exits before Mongo is ready.**
-First boot has to initialise a replica set and start `mongot`; 20–40 seconds is
-normal on a warm image and longer on a cold one. The compose healthcheck allows
-90 seconds and the app waits on `service_healthy`, so just wait and watch
-`docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml logs -f mongodb`.
-If the container restart-loops or exits 137, it was OOM-killed — give Docker more
+**It worked the first time, and now Mongo never becomes healthy.** Check the
+logs for `No primary exists currently` and a stream of
+`ReadConcernMajorityNotAvailableYet`. If they are there, the replica set stored
+in `docker/atlas-local/mongod/data/` was initialised under a container hostname
+that no longer exists, so the container is not a member of the replica set it
+just loaded. It never elects a primary.
+
+This is why `docker-compose.dev.yml` pins `hostname: ragkb-mongodb`. Docker
+otherwise names each container after its ID, and that ID changes on every
+recreation. It looks like a keyfile or permissions problem — "worked once, fails
+on recreate" sounds like both — and it is neither.
+
+If your data directory predates that setting, reset it once:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down
+rm -rf docker/atlas-local/mongod/data/* docker/atlas-local/mongot/data/*
+rm -f  docker/atlas-local/mongod/conf/keyfile
+```
+
+Then bring the stack up and re-run `npm run db:indexes`. Changing `hostname:`
+later means doing this again — see `docker/atlas-local/README.md`.
+
+**`error writing key file: open /data/configdb/keyfile: permission denied`.**
+You wiped `mongod/data/` but kept the keyfile. An empty data directory puts
+`runner` on its initialize path, which rewrites the keyfile, and the surviving
+one is mode `0400` — unwritable even by its owner. Despite the message, this is
+not a uid problem. Delete it and bring the stack up again; it is regenerated on
+boot:
+
+```bash
+rm -f docker/atlas-local/mongod/conf/keyfile
+```
+
+**Atlas Local takes forever, or the app exits before Mongo is ready.** First
+boot has to initialise a replica set and start `mongot`. Twenty to forty seconds
+is normal on a warm image, longer on a cold one. The healthcheck allows 90
+seconds and the app waits on `service_healthy`, so watch and wait:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml logs -f mongodb
+```
+
+A restart loop or exit code 137 means it was OOM-killed. Give Docker more
 memory.
 
-**Search returns nothing even though I stored content.** Almost always one of:
+**Search returns nothing, but I know I stored content.** Almost always one of
+three things. First, `npm run db:indexes` was never run against this database —
+run it. Second, the index exists but is still building; `GET /readyz` reports
+the vector index specifically, and `db:indexes -- --dry-run` prints a
+`QUERYABLE` column. Remember that Atlas Search is eventually consistent, so a
+chunk inserted a second ago is not searchable yet. Third, you recreated the
+Mongo container without the `mongot` bind mount, which discards the search index
+data — see `docker/atlas-local/README.md`, then re-run `db:indexes`.
 
-1. `npm run db:indexes` was never run against this database. Run it.
-2. The index exists but is still building. `GET /readyz` reports the vector
-   index specifically, and `npm run db:indexes -- --dry-run` prints a
-   `QUERYABLE` column. Atlas Search is eventually consistent — a just-inserted
-   chunk is not instantly searchable.
-3. You recreated the Mongo container without the `mongot` bind mount, in which
-   case the search index data was discarded. See
-   `docker/atlas-local/README.md`; re-run `db:indexes`.
-
-Note that a missing **text** index degrades hybrid search to vector-only rather
-than failing (you will see one `search.text_index_unavailable` warning); a
-missing **vector** index is a hard error telling you to run `db:indexes`.
+Worth knowing: a missing **text** index degrades hybrid search to vector-only
+rather than failing, and logs one `search.text_index_unavailable` warning. A
+missing **vector** index is a hard error. Returning zero results silently would
+send you hunting for content that is sitting right there.
 
 **Dimension mismatch.** `EMBEDDING_DIMENSIONS` must equal the vector index's
-`numDimensions`. `db:indexes` injects the configured value into the definition
-when it applies it, and logs `index.dimension_override` when config disagrees
-with the checked-in default. If the index already exists at a different width,
-the migration **refuses to change it in place** and tells you what to do:
-neither `numDimensions` nor `similarity` can be updated on all deployments, so it
-is drop → recreate → re-embed the whole collection (`npm run db:reembed`), which
-is an operator decision, not something a migration script should do for you.
+`numDimensions`. `db:indexes` injects the configured value when it applies the
+definition and logs `index.dimension_override` when config disagrees with the
+checked-in default. If the index already exists at a different width, the
+migration refuses to change it in place and tells you so. Neither
+`numDimensions` nor `similarity` can be updated on all deployments, so the real
+path is drop, recreate, then re-embed the whole collection with
+`npm run db:reembed`. That is an operator's decision, not something a migration
+script should make for you.
 
-**`401` from `/mcp` or `/api/...`.** Send
+**`401` from `/mcp` or `/api/…`.** Send
 `Authorization: Bearer <MCP_AUTH_TOKEN>`. Every `/api/*` route needs it,
-including `GET`s — that is intentional. In the dev stack the effective token is
-whatever compose interpolated, which is `dev-local-token-not-a-secret` unless you
-passed `--env-file .env` (see the precedence note above). Confirm what the
-container is actually using with
-`docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config`.
+including `GET`s. In dev the effective token is whatever compose interpolated —
+`dev-local-token-not-a-secret` unless you passed `--env-file .env`. Confirm what
+the container actually got:
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config
+```
 
 **Atlas Local restart-loops with permission errors on the bind mounts.** The
-image runs as uid/gid `1000:1000`. If your host account is not uid 1000, `mongod`
-cannot write to `docker/atlas-local/`:
+image runs as uid/gid `1000:1000`. If your host account is not uid 1000,
+`mongod` cannot write to `docker/atlas-local/`:
 
 ```bash
 sudo chown -R 1000:1000 docker/atlas-local
 ```
 
-Full details, including the shared `mongod`↔`mongot` keyfile and how to reset
-local state, are in `docker/atlas-local/README.md`.
+The full picture — the shared `mongod`↔`mongot` keyfile, how to reset local
+state — is in `docker/atlas-local/README.md`.
 
 **`Cannot find module 'express'` in the dev container.** `node_modules` is a
-named volume that masks the host tree deliberately (the host copy may be built
-for a different platform, or absent). It is populated from the image the first
-time the volume is created, so after a dependency change you need to recreate it:
+named volume that masks the host tree deliberately, since the host copy may be
+built for another platform or missing entirely. It is populated from the image
+the first time the volume is created, so after a dependency change you have to
+recreate it:
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down -v
@@ -381,5 +433,5 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up 
 ```
 
 **`no such service: mongodb`.** You passed only one `-f`. The base compose file
-is production-shaped and deliberately has no database service; Atlas Local comes
+is production-shaped and has no database service by design; Atlas Local comes
 from the dev override.
