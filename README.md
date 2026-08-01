@@ -374,3 +374,9 @@ recreate it: `docker compose ... down -v`, then `up --build`.
 **`no such service: mongodb`.** You passed only one `-f`. The base compose file
 is production-shaped and has no database service by design; Atlas Local comes
 from the dev override.
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE).
