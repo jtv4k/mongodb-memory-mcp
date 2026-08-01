@@ -12,7 +12,7 @@
  * Search indexes are created but not waited on up front: most paths here ride
  * the standard b-tree indexes — in particular the unique `sourceId` index that
  * makes re-ingest version rather than duplicate. The one exception is browse
- * substring search, which runs through the documents Atlas Search index; those
+ * substring search, which runs through the documents MongoDB Search index; those
  * assertions poll for their own visibility instead of stalling every test
  * behind an index build.
  */
@@ -157,7 +157,7 @@ describe('listSources', () => {
     const byUpperTag = await sources({ tag: 'RUNBOOK' });
     expect(byUpperTag.total).toBe(2);
 
-    // Substring search runs through the documents Atlas Search index, which
+    // Substring search runs through the documents MongoDB Search index, which
     // builds asynchronously and indexes writes eventually — so poll until every
     // seeded document is visible before asserting. The helper swallows the
     // IndexError the service raises while the index is still building.

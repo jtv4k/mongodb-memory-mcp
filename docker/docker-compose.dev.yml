@@ -47,7 +47,7 @@ services:
       # only, and a second, divergent keyfile breaks intra-cluster auth.
       - ./atlas-local/mongod/conf:/data/configdb
       # /data/mongot is NOT declared as a VOLUME by the image, so without this
-      # mount every Atlas Search / Vector Search index is silently discarded the
+      # mount every MongoDB Search / Vector Search index is silently discarded the
       # moment the container is recreated, and `npm run db:indexes` has to be
       # re-run (and re-waited-on) from scratch.
       - ./atlas-local/mongot/data:/data/mongot

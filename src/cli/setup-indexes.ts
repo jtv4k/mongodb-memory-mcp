@@ -33,7 +33,7 @@ interface CliOptions {
 const USAGE = `
 Usage: npm run db:indexes -- [options]
 
-Applies the standard, Atlas Search and Vector Search index definitions in
+Applies the standard, MongoDB Search and Vector Search index definitions in
 src/db/index-definitions/ to the database named by MONGODB_DB_NAME.
 
 Options:

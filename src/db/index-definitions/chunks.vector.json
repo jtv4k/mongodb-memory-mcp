@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Atlas Vector Search index for the `chunks` collection.",
+    "MongoDB Vector Search index for the `chunks` collection.",
     "",
     "This file is the CANONICAL definition. It is applied by `npm run db:indexes`",
     "(src/db/indexes.ts) to Atlas Local and to cloud Atlas identically. Never create",

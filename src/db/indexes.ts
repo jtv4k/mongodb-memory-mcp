@@ -1,7 +1,7 @@
 /**
  * Index management: every index this app needs, applied as code.
  *
- * The spec forbids creating indexes by hand in the Atlas UI. The canonical Atlas
+ * The spec forbids creating indexes by hand in the Atlas UI. The canonical MongoDB
  * Search / Vector Search definitions live in `./index-definitions/*.json` and this
  * module is the only thing that applies them, so Atlas Local, CI and cloud Atlas
  * all converge on the same shape from the same source of truth.
@@ -746,7 +746,7 @@ async function getSearchIndex(
     if (errorCode(cause) === NAMESPACE_NOT_FOUND) return null;
     if (isSearchUnsupported(cause)) {
       throw new IndexError(
-        `This MongoDB deployment does not support Atlas Search indexes, so "${name}" cannot be managed. Use the mongodb/mongodb-atlas-local image for local development, or a cloud Atlas cluster. Server said: ${errorMessage(cause)}`,
+        `This MongoDB deployment does not support MongoDB Search indexes, so "${name}" cannot be managed. Use the mongodb/mongodb-atlas-local image for local development, or a cloud Atlas cluster. Server said: ${errorMessage(cause)}`,
         { cause, details: { index: name, collection } },
       );
     }

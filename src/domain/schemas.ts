@@ -327,7 +327,7 @@ export const searchKnowledgeShape = {
     .enum(['vector', 'text', 'hybrid'])
     .optional()
     .describe(
-      'vector = semantic only, text = Atlas Search keyword only, hybrid = both fused with reciprocal rank fusion. Defaults to the configured mode.',
+      'vector = semantic only, text = MongoDB Search keyword only, hybrid = both fused with reciprocal rank fusion. Defaults to the configured mode.',
     ),
   filters: searchFiltersSchema.describe('Restrict the search to matching chunks.'),
   minScore: z

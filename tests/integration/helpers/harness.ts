@@ -4,12 +4,12 @@
  * The harness assembles exactly what `src/index.ts` assembles — config, logger,
  * MongoDB connection, embedding provider, `KnowledgeService`, indexes — against a
  * private, randomly named database. Nothing here is a mock: the point of this
- * suite is that `$vectorSearch` really runs against a real Atlas Vector Search
+ * suite is that `$vectorSearch` really runs against a real MongoDB Vector Search
  * index, so the only substitution is the embedding provider, which is forced to
  * `fake` (a deterministic hashed bag-of-words embedder with genuine semantic
  * signal) because CI has no Voyage key.
  *
- * ## Atlas Search is eventually consistent, so we poll — never sleep
+ * ## MongoDB Search is eventually consistent, so we poll — never sleep
  *
  * A chunk inserted into `chunks` is not immediately visible to `mongot`. The
  * replication lag is small but unbounded, and a `setTimeout(1500)` is the classic
@@ -56,7 +56,7 @@ const PROBE_LIMIT = 400;
 const PROBE_NUM_CANDIDATES = 2_000;
 
 /** Fixed text for the probe vector: the direction is irrelevant, determinism is not. */
-const PROBE_QUERY = 'atlas search index readiness probe';
+const PROBE_QUERY = 'MongoDB Search index readiness probe';
 
 export interface HarnessOptions {
   /**

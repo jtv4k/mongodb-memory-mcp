@@ -19,7 +19,7 @@ mongot  --keyFile /data/configdb/keyfile --data-dir /data/mongot \
         --mongodHostAndPort localhost:27017
 ```
 
-`mongot` is the Atlas Search / Vector Search process. It is the reason `$search`
+`mongot` is the MongoDB Search / Vector Search process. It is the reason `$search`
 and `$vectorSearch` behave here exactly as they do in cloud Atlas, which is why
 this image — and not a plain `mongo` image — is what dev and CI run against.
 
@@ -29,7 +29,7 @@ this image — and not a plain `mongo` image — is what dev and CI run against.
 | ----------------- | ---------------- | --------------- | ------------------------------------------------ |
 | `mongod/data/`    | `/data/db`       | `mongod` (1000) | mongod WiredTiger data files, the oplog, journal |
 | `mongod/conf/`    | `/data/configdb` | `mongod` (1000) | `mongod.conf` plus the generated `keyfile`       |
-| `mongot/data/`    | `/data/mongot`   | `mongod` (1000) | Atlas Search index data, `configJournal.json`    |
+| `mongot/data/`    | `/data/mongot`   | `mongod` (1000) | MongoDB Search index data, `configJournal.json`  |
 | `mongot/keyfile/` | _(not mounted)_  | —               | Documentation only — see below                   |
 
 Both `/data/configdb` and `/data/db` are declared as `VOLUME`s by the image;

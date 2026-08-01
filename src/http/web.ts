@@ -81,7 +81,7 @@ const SEARCH_MODES: ReadonlyArray<{ value: '' | SearchMode; label: string }> = [
 const MODE_DESCRIPTION: Record<SearchMode, string> = {
   hybrid: 'semantic and keyword results fused with reciprocal rank fusion',
   vector: 'semantic similarity only',
-  text: 'Atlas Search keyword matching only',
+  text: 'MongoDB Search keyword matching only',
 };
 
 /** Snippet geometry. Two windows of ~260 chars reads as a paragraph, not a grep. */
@@ -299,7 +299,7 @@ function toResultsView(result: {
   }>;
 }) {
   const hits: HitView[] = result.hits.map((hit, index) => {
-    // Atlas Search gives real highlights on the text leg; a vector-only search
+    // MongoDB Search gives real highlights on the text leg; a vector-only search
     // has none, so the snippet is cut locally from the chunk instead. Either way
     // the fragments are plain text and are escaped by `renderFragmentsHtml`.
     const fragments =

@@ -1479,7 +1479,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
 
 interface LegResult {
   candidates: RankedCandidate[];
-  /** chunkId → Atlas Search highlight fragments. Empty for the vector leg. */
+  /** chunkId → MongoDB Search highlight fragments. Empty for the vector leg. */
   highlights: Map<string, string[]>;
 }
 
@@ -1539,7 +1539,7 @@ function finalScore(candidate: FusedCandidate, mode: SearchMode): number {
   return candidate.score;
 }
 
-/** Atlas Search `equals` over token-indexed values, ORed when there are several. */
+/** MongoDB Search `equals` over token-indexed values, ORed when there are several. */
 function tokenEquals(path: string, values: readonly string[]): Document {
   // The index normalises tokens to lowercase; normalise the query side too so a
   // filter matches regardless of how the caller cased it.

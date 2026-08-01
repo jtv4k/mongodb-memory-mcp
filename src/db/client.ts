@@ -3,7 +3,7 @@
  *
  * The same code path serves cloud Atlas and Atlas Local (the
  * `mongodb/mongodb-atlas-local` image) — only `MONGODB_URI` differs. Atlas Local
- * runs a single-node replica set with Vector Search and Atlas Search enabled, so
+ * runs a single-node replica set with Vector Search and MongoDB Search enabled, so
  * index definitions and `$vectorSearch` pipelines behave identically in dev, CI
  * and production.
  */

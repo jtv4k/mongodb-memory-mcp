@@ -73,7 +73,7 @@ function requireEnv(): void {
  *
  * The replica-set check is not incidental: Atlas Local runs one, a plain
  * `mongo:8` container does not, and that difference is exactly what makes
- * `mongot` (Atlas Search) and the transactional chunk swap work here. Catching
+ * `mongot` (MongoDB Search) and the transactional chunk swap work here. Catching
  * it now beats discovering it later as a baffling `$vectorSearch` failure.
  */
 async function probeAtlasLocal(): Promise<void> {
@@ -111,7 +111,7 @@ async function probeAtlasLocal(): Promise<void> {
     throw new Error(
       [
         `MongoDB at ${redactUri(uri)} answered, but it is not a replica set.`,
-        'This suite requires the mongodb/mongodb-atlas-local image: Atlas Search,',
+        'This suite requires the mongodb/mongodb-atlas-local image: MongoDB Search,',
         '$vectorSearch and the transactional chunk swap all depend on it, and a plain',
         '"mongo" image provides none of them.',
         START_ATLAS_LOCAL,

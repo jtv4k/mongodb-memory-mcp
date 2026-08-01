@@ -5,7 +5,7 @@
  * calls it receives. The point is to pin down the decisions — strip `$comment`,
  * substitute `numDimensions`, created/unchanged/updated, and above all *never
  * drop a vector index by itself* — because those are the parts that are painful
- * to exercise against a real Atlas Search index in CI.
+ * to exercise against a real MongoDB Search index in CI.
  */
 import type { Db, Document, IndexDescription } from 'mongodb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -530,7 +530,7 @@ describe('ensureIndexes', () => {
     expect(opsOf(state, 'createCollection')).toHaveLength(2);
   });
 
-  it('explains itself on a deployment without Atlas Search', async () => {
+  it('explains itself on a deployment without MongoDB Search', async () => {
     const { logger } = createRecordingLogger();
     const { db, state } = createFakeDb({ collections: ['documents', 'chunks'] });
     state.failures.listSearchIndexes = mongoError(
@@ -539,7 +539,7 @@ describe('ensureIndexes', () => {
     );
 
     await expect(ensureIndexes(db, testConfig(), logger)).rejects.toThrow(
-      /does not support Atlas Search indexes/,
+      /does not support MongoDB Search indexes/,
     );
   });
 
