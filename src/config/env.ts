@@ -175,7 +175,7 @@ export const envSchema = z
     // ---- mcp ---------------------------------------------------------------
     MCP_AUTH_TOKEN: z.string().min(16, 'must be at least 16 characters'),
     MCP_PATH: z.string().startsWith('/').default('/mcp'),
-    MCP_SERVER_NAME: z.string().min(1).default('mongodb-rag-kb'),
+    MCP_SERVER_NAME: z.string().min(1).default('mongodb-memory-mcp'),
     MCP_SERVER_VERSION: z.string().min(1).default('0.1.0'),
     /** Guards browser-based DNS-rebinding attacks on the local HTTP transport. */
     MCP_DNS_REBINDING_PROTECTION: boolFromEnv(false),

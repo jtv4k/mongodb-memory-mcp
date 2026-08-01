@@ -27,7 +27,7 @@ function createMongoClient(cfg: MongoConfig): MongoClient {
     // a replica-set election mid-write rather than surfacing a spurious failure.
     retryWrites: true,
     retryReads: true,
-    appName: 'mongodb-rag-kb-mcp',
+    appName: 'mongodb-memory-mcp',
   });
 }
 

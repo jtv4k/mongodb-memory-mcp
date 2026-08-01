@@ -180,7 +180,7 @@ describe('loadConfig — happy path', () => {
     });
     expect(config.mcp).toMatchObject({
       path: '/mcp',
-      serverName: 'mongodb-rag-kb',
+      serverName: 'mongodb-memory-mcp',
       serverVersion: '0.1.0',
       dnsRebindingProtection: false,
       allowedHosts: [],

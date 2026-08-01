@@ -1,4 +1,4 @@
-# MongoDB RAG KB MCP
+# MongoDB Memory MCP
 
 Have you ever explained the same thing to an AI assistant three times in one
 week? The context window closes, the session ends, and everything the

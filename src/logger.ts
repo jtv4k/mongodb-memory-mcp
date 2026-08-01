@@ -61,7 +61,7 @@ const EVENT_BY_KIND: Record<ErrorKind, string> = {
 export function createLogger(cfg: LoggingConfig): Logger {
   const options: LoggerOptions = {
     level: cfg.level,
-    base: { service: 'mongodb-rag-kb-mcp' },
+    base: { service: 'mongodb-memory-mcp' },
     redact: { paths: REDACT_PATHS, censor: '[redacted]' },
     formatters: {
       level: (label) => ({ level: label }),

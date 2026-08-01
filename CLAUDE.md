@@ -1,4 +1,4 @@
-# CLAUDE.md — MongoDB RAG KB MCP
+# CLAUDE.md — MongoDB Memory MCP
 
 Operating notes for anyone — an AI coding session or a human contributor —
 working in this repository. Read this before touching anything: it is the
