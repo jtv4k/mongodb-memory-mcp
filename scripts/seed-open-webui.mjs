@@ -200,7 +200,7 @@ async function seedToolServer(token) {
     config: { enable: true, access_grants: [] },
     info: {
       id: TOOL_ID,
-      name: 'mongodb-rag-kb',
+      name: 'mongodb-memory-mcp',
       description: 'MongoDB-backed knowledge base (store, search, list, delete)',
     },
   };

@@ -23,7 +23,7 @@ import { ChunkingError } from '../../src/errors.js';
 // ---------------------------------------------------------------------------
 
 const README = [
-  '# MongoDB RAG KB',
+  '# MongoDB Memory',
   '',
   'The knowledge base accepts content from AI clients over MCP, chunks it with a',
   'structure-aware splitter, embeds the chunks with Voyage and stores both the raw',
@@ -246,12 +246,12 @@ describe('parseMarkdownBlocks', () => {
       .map((block) => block.headingPath);
 
     expect(headings).toEqual([
-      ['MongoDB RAG KB'],
-      ['MongoDB RAG KB', 'Install'],
-      ['MongoDB RAG KB', 'Install', 'Docker'],
-      ['MongoDB RAG KB', 'Install', 'Docker', 'Compose'],
-      ['MongoDB RAG KB', 'Install', 'Manual'],
-      ['MongoDB RAG KB', 'Search'],
+      ['MongoDB Memory'],
+      ['MongoDB Memory', 'Install'],
+      ['MongoDB Memory', 'Install', 'Docker'],
+      ['MongoDB Memory', 'Install', 'Docker', 'Compose'],
+      ['MongoDB Memory', 'Install', 'Manual'],
+      ['MongoDB Memory', 'Search'],
     ]);
   });
 
@@ -415,11 +415,11 @@ describe('chunkContent markdown', () => {
     expect(result.strategy).toBe(CHUNKING_STRATEGIES.markdown);
     expect(
       result.chunks.some(
-        (chunk) => chunk.headingPath.join('/') === 'MongoDB RAG KB/Install/Docker/Compose',
+        (chunk) => chunk.headingPath.join('/') === 'MongoDB Memory/Install/Docker/Compose',
       ),
     ).toBe(true);
     expect(
-      result.chunks.some((chunk) => chunk.headingPath.join('/') === 'MongoDB RAG KB/Search'),
+      result.chunks.some((chunk) => chunk.headingPath.join('/') === 'MongoDB Memory/Search'),
     ).toBe(true);
   });
 

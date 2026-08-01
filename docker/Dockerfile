@@ -1,5 +1,5 @@
 ##
-# Multi-stage image for mongodb-rag-kb-mcp.
+# Multi-stage image for mongodb-memory-mcp.
 #
 # One file serves every workflow so the dev and production runtimes cannot drift
 # apart. Build context is the PROJECT ROOT, not docker/:

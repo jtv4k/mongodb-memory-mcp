@@ -245,7 +245,7 @@ describe('rejected credentials', () => {
     const exchange = createExchange({});
     run(middleware, exchange);
 
-    expect(exchange.captured.headers['www-authenticate']).toBe('Bearer realm="mongodb-rag-kb"');
+    expect(exchange.captured.headers['www-authenticate']).toBe('Bearer realm="mongodb-memory-mcp"');
     expect(errorBody(exchange).error.data.reason).toBe('missing');
   });
 
@@ -254,7 +254,7 @@ describe('rejected credentials', () => {
     run(middleware, exchange);
 
     expect(exchange.captured.headers['www-authenticate']).toBe(
-      'Bearer realm="mongodb-rag-kb", error="invalid_token"',
+      'Bearer realm="mongodb-memory-mcp", error="invalid_token"',
     );
     expect(errorBody(exchange).error.data.reason).toBe('invalid');
   });
