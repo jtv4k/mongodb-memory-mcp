@@ -10,13 +10,13 @@
  *    killed and restarted into the exact same broken world.
  *
  *  - `/readyz` (readiness) — "should a load balancer send me traffic?" It pings
- *    Mongo and checks that the vector index is queryable, and answers 503 with
+ *    MongoDB and checks that the vector index is queryable, and answers 503 with
  *    the same JSON breakdown when either is false. Failing this only removes the
  *    instance from rotation.
  *
  * Both are mounted unauthenticated (see `src/app.ts`): an orchestrator probe has
  * no credentials, and the payload is deliberately free of anything sensitive —
- * notably the Mongo URI, which carries the password. The database *name* is
+ * notably the MongoDB URI, which carries the password. The database *name* is
  * included because it is the single most useful thing when an instance is
  * pointed at the wrong environment.
  */

@@ -224,7 +224,7 @@ const exitCode = await main(process.argv.slice(2)).catch((error: unknown) => {
   return 1;
 });
 
-// Explicit exit: the Mongo driver's monitoring sockets and pino's transport
+// Explicit exit: the MongoDB driver's monitoring sockets and pino's transport
 // worker both keep the event loop alive, and a migration step that hangs in CI
 // is worse than one that fails.
 await flushStdio();

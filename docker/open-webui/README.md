@@ -25,12 +25,8 @@ through Open WebUI's admin API, so nothing needs resetting.
 
 **Ran this stack before?** Open WebUI only accepts a disabled sign-in on a fresh
 database — otherwise it answers "You can't turn off authentication because there
-are existing users." Drop the volume and bring it back up; the seeder
-re-registers the tools:
-
-```bash
-docker volume rm ragkb_open_webui_data
-```
+are existing users." Reset the volume (see the last section) and bring it back
+up; the seeder re-registers the tools.
 
 That missing sign-in is deliberate — one fewer step to a working chat — but know
 what it exposes. The port publishes on every interface, and the tools are not

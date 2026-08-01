@@ -271,7 +271,7 @@ describe('loadConfig — rejections', () => {
     expect(error.message).toContain('mongodb://');
   });
 
-  it('rejects a database name containing characters Mongo disallows', () => {
+  it('rejects a database name containing characters MongoDB disallows', () => {
     expect(expectConfigError(minimalEnv({ MONGODB_DB_NAME: 'rag kb/prod' })).message).toContain(
       'MONGODB_DB_NAME',
     );

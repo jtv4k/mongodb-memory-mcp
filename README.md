@@ -57,26 +57,14 @@ Two variables you must fill in:
 | `MCP_AUTH_TOKEN` | Minimum 16 characters. Generate one with `openssl rand -hex 32`.                                                                                                                                                    |
 
 `MONGODB_URI` and `MONGODB_DB_NAME` matter only for the production stack; dev
-sets both for you. Everything else already has a working default —
-`EMBEDDING_MODEL=voyage-context-3`, `EMBEDDING_DIMENSIONS=1024`,
-`CHUNK_SIZE_TOKENS=512`, `CHUNK_OVERLAP_TOKENS=64`, `PORT=3000`,
-`MCP_PATH=/mcp`, `SEARCH_HYBRID_ENABLED=true`, and about thirty more. The full
+sets both for you. Everything else already has a working default. The full
 schema, including the cross-field rules, lives in `src/config/env.ts`.
 
-The file `docker/docker-compose.dev.yml` sets
-`NODE_ENV`, `LOG_LEVEL`, `LOG_PRETTY`, `MONGODB_URI`, `MONGODB_DB_NAME` and
-`MCP_AUTH_TOKEN` in its `environment:` block, and an entry there beats
-`env_file: ../.env`. That's important to remember for `MONGODB_URI` -- the URI
-will work from the docker compose file over `.env`. That also means
-your `.env` token is ignored in dev unless you also hand it to compose's
-interpolation:
-
-```bash
-docker compose --env-file .env \
-  -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
-```
-
-The dev environment falls back to the token `dev-local-token-not-a-secret` without `--env-file`, which is exactly as secure as it sounds. `VOYAGE_API_KEY` is unaffected — it comes through `env_file` normally if it's not set in compose.
+One compose subtlety worth knowing: `docker-compose.dev.yml` sets several
+variables in its `environment:` block, and an entry there beats `env_file`. Your
+`.env` token therefore only takes effect in dev when you hand the file to
+compose's interpolation with `--env-file .env` — without it, the stack falls
+back to `dev-local-token-not-a-secret`, which is exactly as secure as it sounds.
 
 ### 2. Bring up the dev stack
 
@@ -362,107 +350,37 @@ commands above do), or run
 `docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml build`
 once and re-run `up`.
 
-**It worked the first time, and now Mongo never becomes healthy.** Check the
-logs for `No primary exists currently` and a stream of
-`ReadConcernMajorityNotAvailableYet`. If they are there, the replica set stored
-in `docker/atlas-local/mongod/data/` was initialised under a container hostname
-that no longer exists, so the container is not a member of the replica set it
-just loaded. It never elects a primary.
-
-This is why `docker-compose.dev.yml` pins `hostname: ragkb-mongodb`. Docker
-otherwise names each container after its ID, and that ID changes on every
-recreation. It looks like a keyfile or permissions problem — "worked once, fails
-on recreate" sounds like both — and it is neither.
-
-If your data directory predates that setting, reset it once:
-
-```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down
-rm -rf docker/atlas-local/mongod/data/* docker/atlas-local/mongot/data/*
-rm -f  docker/atlas-local/mongod/conf/keyfile
-```
-
-Then bring the stack up and re-run `npm run db:indexes`. Changing `hostname:`
-later means doing this again — see `docker/atlas-local/README.md`.
-
-**`error writing key file: open /data/configdb/keyfile: permission denied`.**
-You wiped `mongod/data/` but kept the keyfile. An empty data directory puts
-`runner` on its initialize path, which rewrites the keyfile, and the surviving
-one is mode `0400` — unwritable even by its owner. Despite the message, this is
-not a uid problem. Delete it and bring the stack up again; it is regenerated on
-boot:
-
-```bash
-rm -f docker/atlas-local/mongod/conf/keyfile
-```
-
-**Atlas Local takes forever, or the app exits before Mongo is ready.** First
-boot has to initialise a replica set and start `mongot`. Twenty to forty seconds
-is normal on a warm image, longer on a cold one. The healthcheck allows 90
-seconds and the app waits on `service_healthy`, so watch and wait:
-
-```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml logs -f mongodb
-```
-
-A restart loop or exit code 137 means it was OOM-killed. Give Docker more
-memory.
-
 **Search returns nothing, but I know I stored content.** Almost always one of
 three things. First, `npm run db:indexes` was never run against this database —
-run it. Second, the index exists but is still building; `GET /readyz` reports
-the vector index specifically, and `db:indexes -- --dry-run` prints a
-`QUERYABLE` column. Remember that Atlas Search is eventually consistent, so a
-chunk inserted a second ago is not searchable yet. Third, you recreated the
-Mongo container without the `mongot` bind mount, which discards the search index
-data — see `docker/atlas-local/README.md`, then re-run `db:indexes`.
-
-Worth knowing: a missing **text** index degrades hybrid search to vector-only
-rather than failing, and logs one `search.text_index_unavailable` warning. A
-missing **vector** index is a hard error. Returning zero results silently would
-send you hunting for content that is sitting right there.
-
-**Dimension mismatch.** `EMBEDDING_DIMENSIONS` must equal the vector index's
-`numDimensions`. `db:indexes` injects the configured value when it applies the
-definition and logs `index.dimension_override` when config disagrees with the
-checked-in default. If the index already exists at a different width, the
-migration refuses to change it in place and tells you so. Neither
-`numDimensions` nor `similarity` can be updated on all deployments, so the real
-path is drop, recreate, then re-embed the whole collection with
-`npm run db:reembed`. That is an operator's decision, not something a migration
-script should make for you.
+run it. Second, the index is still building; `GET /readyz` reports the vector
+index, and `db:indexes -- --dry-run` prints a `QUERYABLE` column. Atlas Search
+is also eventually consistent, so a chunk inserted a second ago is not
+searchable yet. Third, you recreated the MongoDB container without the `mongot`
+bind mount, which discards the search index data — re-run `db:indexes`. Worth
+knowing: a missing **text** index degrades hybrid search to vector-only with one
+logged warning; a missing **vector** index is a hard error on purpose.
 
 **`401` from `/mcp` or `/api/…`.** Send
-`Authorization: Bearer <MCP_AUTH_TOKEN>`. Every `/api/*` route needs it,
-including `GET`s. In dev the effective token is whatever compose interpolated —
-`dev-local-token-not-a-secret` unless you passed `--env-file .env`. Confirm what
-the container actually got:
+`Authorization: Bearer <MCP_AUTH_TOKEN>` — every `/api/*` route needs it,
+including `GET`s. In dev the effective token is whatever compose interpolated
+(`dev-local-token-not-a-secret` unless you passed `--env-file .env`);
+`docker compose ... config` shows what the container actually got.
 
-```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml config
-```
+**Dimension mismatch.** `EMBEDDING_DIMENSIONS` must equal the vector index's
+`numDimensions`; re-running `db:indexes` keeps them in sync. Neither
+`numDimensions` nor `similarity` can be changed in place — that is drop,
+recreate, re-embed (`npm run db:reembed`), and it is an operator's decision, not
+something a migration script should make for you.
 
-**Atlas Local restart-loops with permission errors on the bind mounts.** The
-image runs as uid/gid `1000:1000`. If your host account is not uid 1000,
-`mongod` cannot write to `docker/atlas-local/`:
-
-```bash
-sudo chown -R 1000:1000 docker/atlas-local
-```
-
-The full picture — the shared `mongod`↔`mongot` keyfile, how to reset local
-state — is in `docker/atlas-local/README.md`.
+**MongoDB never becomes healthy, keyfile complaints, permission errors, resets.**
+Everything about the Atlas Local container — the replica set that outlives its
+hostname, the shared `mongod`↔`mongot` keyfile, uid 1000 bind mounts, slow first
+boots, and how to reset local state — lives in `docker/atlas-local/README.md`.
+Start there; the failure modes look alike and that file tells them apart.
 
 **`Cannot find module 'express'` in the dev container.** `node_modules` is a
-named volume that masks the host tree deliberately, since the host copy may be
-built for another platform or missing entirely. It is populated from the image
-the first time the volume is created, so after a dependency change you have to
-recreate it:
-
-```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down -v
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
-```
+named volume that deliberately masks the host tree. After a dependency change,
+recreate it: `docker compose ... down -v`, then `up --build`.
 
 **`no such service: mongodb`.** You passed only one `-f`. The base compose file
 is production-shaped and has no database service by design; Atlas Local comes

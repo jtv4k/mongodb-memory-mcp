@@ -2,7 +2,7 @@
  * One fully wired stack per integration test file.
  *
  * The harness assembles exactly what `src/index.ts` assembles — config, logger,
- * Mongo connection, embedding provider, `KnowledgeService`, indexes — against a
+ * MongoDB connection, embedding provider, `KnowledgeService`, indexes — against a
  * private, randomly named database. Nothing here is a mock: the point of this
  * suite is that `$vectorSearch` really runs against a real Atlas Vector Search
  * index, so the only substitution is the embedding provider, which is forced to
