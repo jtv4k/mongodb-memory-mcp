@@ -179,7 +179,7 @@ export interface StandardIndexSpec {
 }
 
 /**
- * Names are explicit (never Mongo's generated `sourceId_1`) so drift is legible
+ * Names are explicit (never MongoDB's generated `sourceId_1`) so drift is legible
  * in `listIndexes` output and so this file is the only place they are spelled.
  */
 export const STANDARD_INDEXES: readonly StandardIndexSpec[] = [
@@ -189,12 +189,6 @@ export const STANDARD_INDEXES: readonly StandardIndexSpec[] = [
     key: { sourceId: 1 },
     unique: true,
     why: 'store_content upserts by sourceId; uniqueness is the guarantee that re-ingest versions a document instead of duplicating it',
-  },
-  {
-    collection: COLLECTIONS.documents,
-    name: 'documents_contentHash',
-    key: { contentHash: 1 },
-    why: 'idempotent re-ingest: "have we already stored exactly this content?" before chunking and embedding',
   },
   {
     collection: COLLECTIONS.documents,
@@ -209,12 +203,6 @@ export const STANDARD_INDEXES: readonly StandardIndexSpec[] = [
     why: 'default browse ordering (newest first) and the list_documents pagination sort',
   },
   {
-    collection: COLLECTIONS.documents,
-    name: 'documents_contentType_updatedAt',
-    key: { contentType: 1, updatedAt: -1 },
-    why: 'browse filtered by content type while still sorting by recency, without an in-memory sort',
-  },
-  {
     collection: COLLECTIONS.chunks,
     name: 'chunks_documentId_chunkIndex_unique',
     key: { documentId: 1, chunkIndex: 1 },
@@ -225,7 +213,7 @@ export const STANDARD_INDEXES: readonly StandardIndexSpec[] = [
     collection: COLLECTIONS.chunks,
     name: 'chunks_sourceId',
     key: { sourceId: 1 },
-    why: 'delete_content by sourceId and per-source chunk counts in list_sources',
+    why: "the re-embed backfill's --source-ids scoping selects chunks by sourceId; delete and the list_sources counts join on documentId instead",
   },
   {
     collection: COLLECTIONS.chunks,
@@ -238,12 +226,6 @@ export const STANDARD_INDEXES: readonly StandardIndexSpec[] = [
     name: 'chunks_tags',
     key: { tags: 1 },
     why: 'tag-filtered chunk queries that do not go through $vectorSearch (exports, admin views)',
-  },
-  {
-    collection: COLLECTIONS.chunks,
-    name: 'chunks_documentContentHash',
-    key: { documentContentHash: 1 },
-    why: 'detect chunks left behind by an older revision of their parent document',
   },
 ];
 
