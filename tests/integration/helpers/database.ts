@@ -24,7 +24,7 @@ import { MongoClient } from 'mongodb';
 /** Shared by every test database so a stray one is obvious and easy to sweep. */
 export const TEST_DB_PREFIX = 'ragkb_test_';
 
-/** 5 bytes → 10 hex characters, well inside Mongo's 63-character name limit. */
+/** 5 bytes → 10 hex characters, well inside MongoDB's 63-character name limit. */
 const SUFFIX_BYTES = 5;
 
 /** Bounded, so an environment that somehow cannot yield a free name fails loudly. */

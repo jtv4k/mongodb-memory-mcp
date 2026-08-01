@@ -326,7 +326,7 @@ describe('ensureIndexes', () => {
       embeddingModel: 1,
       embeddingDimensions: 1,
     });
-    // Every index we declare must be named explicitly, never left to Mongo.
+    // Every index we declare must be named explicitly, never left to MongoDB.
     expect(submitted.every((description) => typeof description.name === 'string')).toBe(true);
   });
 

@@ -4,7 +4,7 @@
  * A real Express app is built by `createApp` and bound to port 0, then driven
  * with the global `fetch`. Everything below the transport is a hand-rolled
  * double: the `KnowledgeService` is a bag of `vi.fn()`s, the embedding provider
- * returns fixed vectors, and the "Mongo connection" implements exactly the two
+ * returns fixed vectors, and the "MongoDB connection" implements exactly the two
  * driver calls the readiness probe makes (`db.command` and
  * `collection.listSearchIndexes`). No supertest — the point is to exercise the
  * same socket path a client uses, including status codes, headers and the
@@ -16,7 +16,7 @@
  *
  * What is pinned here, and why each one is a rule someone could quietly break:
  *   - `/healthz` answers without credentials (Docker's HEALTHCHECK has none).
- *   - `/readyz` 503s when Mongo is unreachable, but `/healthz` still 200s.
+ *   - `/readyz` 503s when MongoDB is unreachable, but `/healthz` still 200s.
  *   - `/api/*` is authenticated for READS too, not just writes.
  *   - Invalid input never reaches the service.
  *   - Query strings are coerced to the types the zod schemas actually declare.
@@ -232,7 +232,7 @@ describe('health endpoints', () => {
     });
   });
 
-  it('answers /readyz with 200 when Mongo and the vector index are both fine', async () => {
+  it('answers /readyz with 200 when MongoDB and the vector index are both fine', async () => {
     const response = await fetch(`${app.baseUrl}/readyz`);
 
     expect(response.status).toBe(200);
@@ -242,7 +242,7 @@ describe('health endpoints', () => {
     });
   });
 
-  it('answers /readyz with 503 when the Mongo ping fails, while /healthz stays 200', async () => {
+  it('answers /readyz with 503 when the MongoDB ping fails, while /healthz stays 200', async () => {
     const broken = await startApp({ mongo: { pingOk: false, indexQueryable: false } });
 
     const ready = await fetch(`${broken.baseUrl}/readyz`);

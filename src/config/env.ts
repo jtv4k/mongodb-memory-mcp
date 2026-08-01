@@ -145,8 +145,8 @@ export const envSchema = z
       .string()
       .min(1)
       .max(63)
-      // Mongo forbids these in database names; catch it here rather than at first query.
-      .refine((value) => !/[/\\. "$*<>:|?]/.test(value), 'contains characters Mongo disallows'),
+      // MongoDB forbids these in database names; catch it here rather than at first query.
+      .refine((value) => !/[/\\. "$*<>:|?]/.test(value), 'contains characters MongoDB disallows'),
     MONGODB_MAX_POOL_SIZE: positiveInt.max(500).default(10),
     MONGODB_SERVER_SELECTION_TIMEOUT_MS: positiveInt.default(10_000),
     MONGODB_VECTOR_INDEX_NAME: z.string().min(1).default('chunks_vector_index'),

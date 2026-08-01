@@ -11,7 +11,7 @@
  *
  *  1. Exact-substring replacement of the three secrets we actually hold. No
  *     regex escaping hazards, and it catches a credential quoted verbatim by an
- *     upstream service or by the Mongo driver.
+ *     upstream service or by the MongoDB driver.
  *  2. A catch-all for connection strings the driver *assembled* rather than
  *     copied from our config — a retry against a resolved `mongodb+srv` seed
  *     list quotes a URI that never appears in `config.mongo.uri`.

@@ -56,7 +56,7 @@
  * ## What `shutdown()` owns
  *
  * ONLY the things this module created — which today means the MCP transport's
- * open sessions. It deliberately does NOT close the Mongo connection or the
+ * open sessions. It deliberately does NOT close the MongoDB connection or the
  * embedding provider: those are passed in, they outlive any single app
  * instance (tests build several against one connection), and `src/index.ts`
  * closes them in the right order after the HTTP server has stopped accepting.

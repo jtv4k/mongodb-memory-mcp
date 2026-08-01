@@ -22,7 +22,7 @@
  *
  * ## Ownership on shutdown
  *
- * This module opened the Mongo connection and the embedding provider, so this
+ * This module opened the MongoDB connection and the embedding provider, so this
  * module closes them. `AppBundle.shutdown()` closes only what the app itself
  * owns (live MCP sessions). The order matters: stop accepting connections, end
  * the MCP sessions holding streams open, wait for in-flight responses, then
@@ -91,7 +91,7 @@ function loadConfigOrExit(): AppConfig {
  *
  * Logged once at startup because "which database am I actually pointed at?" is
  * the first question of most incidents. Secrets are reported as present/absent
- * and never by value — that includes the Mongo URI, which carries a password in
+ * and never by value — that includes the MongoDB URI, which carries a password in
  * every non-trivial deployment.
  */
 function describeConfig(config: AppConfig): Record<string, unknown> {

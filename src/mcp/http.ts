@@ -9,7 +9,7 @@
  * shared instance would cross-wire two clients' responses. Both objects are
  * therefore created per session and torn down together — which is cheap,
  * because `createMcpServer` is a pure composition root over shared,
- * already-constructed dependencies (`KnowledgeService`, the Mongo pool, the
+ * already-constructed dependencies (`KnowledgeService`, the MongoDB pool, the
  * embedding provider). Nothing per-session is expensive; only the bookkeeping.
  *
  * ## Why sessions rather than stateless mode

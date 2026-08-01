@@ -80,7 +80,7 @@ export { parseMarkdownBlocks, scanLines } from './markdown.js';
 export type { MarkdownBlock, MarkdownBlockKind, SourceLine } from './markdown.js';
 
 /**
- * One strategy name per code path, so `document.chunking.strategy` in Mongo says
+ * One strategy name per code path, so `document.chunking.strategy` in MongoDB says
  * exactly how a document was split and a re-chunk can be targeted at just the
  * documents whose splitter changed.
  */
