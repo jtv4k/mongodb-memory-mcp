@@ -62,7 +62,7 @@ const REMEDIATION: Record<ErrorKind, string> = {
   storage: 'The knowledge base is temporarily unavailable. Retry shortly.',
   search: 'The search backend is temporarily unavailable. Retry shortly.',
   index:
-    'A required Atlas Search / Vector Search index is missing or still building. A server operator must run `npm run db:indexes`.',
+    'A required MongoDB Search / Vector Search index is missing or still building. A server operator must run `npm run db:indexes`.',
   internal: 'This is a server-side bug. Report the request id below rather than retrying blindly.',
 };
 

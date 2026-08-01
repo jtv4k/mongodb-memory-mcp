@@ -31,7 +31,7 @@ const MODEL_ID = (process.env['OWUI_MODEL_ID'] ?? 'mongodb-kb').trim();
 const OLLAMA_URL = (process.env['OLLAMA_BASE_URL'] ?? '').trim();
 
 const SYSTEM_PROMPT = [
-  'You have a persistent knowledge base backed by MongoDB Atlas Vector Search. It outlives',
+  'You have a persistent knowledge base backed by MongoDB MongoDB Vector Search. It outlives',
   'this conversation and is shared with other sessions and agents. Treat it as long-term',
   'memory, not as a scratchpad.',
   '',

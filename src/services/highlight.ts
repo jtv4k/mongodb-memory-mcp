@@ -1,7 +1,7 @@
 /**
  * Snippet extraction and safe rendering of highlighted text.
  *
- * Atlas Search gives us highlights for free, but only on the text leg. A
+ * MongoDB Search gives us highlights for free, but only on the text leg. A
  * vector-only search — the default first-run experience, and every search that
  * degrades because the text index is still building — has none, and a results
  * page that shows the first 240 characters of every chunk is useless. So we find
@@ -143,7 +143,7 @@ export function extractQueryTerms(query: string): string[] {
  *
  * Windows are ranked by how many *distinct* query terms they contain, so a
  * snippet covering three different words beats one that repeats a single common
- * word five times, and they are returned best-first (the same convention Atlas
+ * word five times, and they are returned best-first (the same convention MongoDB
  * Search uses for its own highlights). Elided edges are marked with an ellipsis.
  *
  * When the query matches nothing — or is all punctuation — the head of the text

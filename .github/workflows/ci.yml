@@ -127,7 +127,7 @@ jobs:
         run: npm ci
 
       # Smoke-tests the index-definition CLI against a real mongot: it must be
-      # able to create both Atlas Search indexes and the vector index and wait
+      # able to create both MongoDB Search indexes and the vector index and wait
       # for them to become queryable. It uses its own fixed database because the
       # per-run database the tests use does not exist yet at this point.
       - name: Apply index definitions

@@ -1,6 +1,6 @@
 {
   "$comment": [
-    "Atlas Search (full-text) index for the `documents` collection.",
+    "MongoDB Search (full-text) index for the `documents` collection.",
     "",
     "Serves browse substring search: the `search` parameter on `list_sources`,",
     "`/api/sources`, `/api/documents` and the `/documents` page. The custom",

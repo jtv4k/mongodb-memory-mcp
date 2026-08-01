@@ -80,7 +80,7 @@ rather than a silent slowdown.
 
 ## Vector search indexes
 
-An Atlas Vector Search index stores one dense embedding array per record and
+An MongoDB Vector Search index stores one dense embedding array per record and
 compares them with cosine similarity. The declared dimension count must equal the
 width of the vectors the model produces, or every similarity query fails. The
 approximate nearest neighbour traversal examines a configurable number of

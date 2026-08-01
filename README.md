@@ -7,7 +7,7 @@ assistant learned goes with it.
 This is my answer to that. It is an MCP server sitting on top of MongoDB. An AI
 client hands it content over the [Model Context Protocol](https://modelcontextprotocol.io);
 the server splits that content with a structure-aware chunker, embeds the chunks
-with Voyage AI, and stores them in MongoDB behind Atlas Vector Search and Atlas
+with Voyage AI, and stores them in MongoDB behind MongoDB Vector Search and MongoDB
 Search indexes. Later — a different session, a different client, a different
 week — you ask a question in plain language and get the relevant passages back,
 each one carrying its source document, heading breadcrumb and relevance score.
@@ -98,7 +98,7 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
 The definitions live in `src/db/index-definitions/*.json` and are applied as
 code — never by hand in the Atlas UI, because the UI is not the source of truth
 and cloud Atlas would drift from your laptop within a day. The command prints
-every standard, Atlas Search and Vector Search index as `created`, `updated` or
+every standard, MongoDB Search and Vector Search index as `created`, `updated` or
 `unchanged`, reports whether each is queryable, then waits for the search
 indexes to finish building. It is idempotent, so re-running it is safe; this is
 the deploy-time migration step. Add `-- --dry-run` to see the plan and write
@@ -131,10 +131,10 @@ curl -sS -X POST "$BASE/api/content" \
   -H 'Content-Type: application/json' \
   -d '{
         "sourceId": "demo/vector-search",
-        "title": "Atlas Vector Search notes",
+        "title": "MongoDB Vector Search notes",
         "contentType": "markdown",
         "tags": ["mongodb", "demo"],
-        "content": "# Atlas Vector Search\n\nThe $vectorSearch stage performs approximate nearest-neighbour search over an indexed vector field.\n\n## Filters\n\nA field must be declared as a filter path in the index before it can be filtered on."
+        "content": "# MongoDB Vector Search\n\nThe $vectorSearch stage performs approximate nearest-neighbour search over an indexed vector field.\n\n## Filters\n\nA field must be declared as a filter path in the index before it can be filtered on."
       }'
 
 # Search it back
@@ -319,7 +319,7 @@ keeping them as code.
 | `src/config/env.ts`          | The only module that reads the environment; zod-validated `AppConfig` |
 | `src/domain/`                | Persistence types and every zod schema for external input             |
 | `src/db/`                    | Connection, typed collections, index management                       |
-| `src/db/index-definitions/`  | **Canonical** Atlas Search / Vector Search JSON                       |
+| `src/db/index-definitions/`  | **Canonical** MongoDB Search / Vector Search JSON                     |
 | `src/chunking/`              | Pure, structure-aware chunker                                         |
 | `src/embeddings/`            | `EmbeddingProvider` interface, Voyage provider, offline fake, factory |
 | `src/services/`              | `KnowledgeService` — all business logic; rank fusion; highlighting    |
@@ -341,7 +341,7 @@ keeping them as code.
 **Search returns nothing, but I know I stored content.** Almost always one of
 three things. First, `npm run db:indexes` was never run against this database —
 run it. Second, the index is still building; `GET /readyz` reports the vector
-index, and `db:indexes -- --dry-run` prints a `QUERYABLE` column. Atlas Search
+index, and `db:indexes -- --dry-run` prints a `QUERYABLE` column. MongoDB Search
 is also eventually consistent, so a chunk inserted a second ago is not
 searchable yet. Third, you recreated the MongoDB container without the `mongot`
 bind mount, which discards the search index data — re-run `db:indexes`. Worth

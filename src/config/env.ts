@@ -152,7 +152,7 @@ export const envSchema = z
     MONGODB_VECTOR_INDEX_NAME: z.string().min(1).default('chunks_vector_index'),
     MONGODB_TEXT_INDEX_NAME: z.string().min(1).default('chunks_text_index'),
     MONGODB_DOCUMENTS_TEXT_INDEX_NAME: z.string().min(1).default('documents_text_index'),
-    /** How long `db:indexes` waits for Atlas Search indexes to become queryable. */
+    /** How long `db:indexes` waits for MongoDB Search indexes to become queryable. */
     MONGODB_INDEX_READY_TIMEOUT_MS: positiveInt.default(300_000),
 
     // ---- embeddings --------------------------------------------------------

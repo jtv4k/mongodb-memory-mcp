@@ -127,7 +127,7 @@ export class SearchError extends AppError {
   }
 }
 
-/** An Atlas Search / Vector Search index is missing, stale or not queryable. */
+/** An MongoDB Search / Vector Search index is missing, stale or not queryable. */
 export class IndexError extends AppError {
   constructor(message: string, opts: AppErrorOptions = {}) {
     super(message, { ...opts, kind: 'index', code: 'E_INDEX', httpStatus: 503 });

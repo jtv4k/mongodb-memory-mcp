@@ -14,7 +14,7 @@
  *
  * ## Startup is allowed to succeed without a vector index
  *
- * A brand-new deployment has an empty database and no Atlas Search indexes; the
+ * A brand-new deployment has an empty database and no MongoDB Search indexes; the
  * indexes are created by `npm run db:indexes`, which usually runs *after* the
  * container is up. Crashing on a missing index would make that impossible and
  * would put the container in a restart loop that no amount of retrying can fix.

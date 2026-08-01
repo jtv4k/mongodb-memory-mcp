@@ -1,6 +1,6 @@
 /**
  * The round trip the spec demands: `store_content` → `search_knowledge`, against
- * a real Atlas Local with a real Atlas Vector Search index.
+ * a real Atlas Local with a real MongoDB Vector Search index.
  *
  * Nothing here is mocked except the embedding vendor. In particular the vector
  * leg genuinely runs `$vectorSearch`: `vectorScore` is projected from
@@ -56,7 +56,7 @@ beforeAll(async () => {
     stored.set(fixture.sourceId, result);
   }
 
-  // Atlas Search is eventually consistent: poll each source into both indexes
+  // MongoDB Search is eventually consistent: poll each source into both indexes
   // rather than sleeping and hoping.
   for (const fixture of ALL_FIXTURES) {
     const result = stored.get(fixture.sourceId);
@@ -240,7 +240,7 @@ describe('vector search', () => {
 });
 
 describe('text and hybrid search', () => {
-  it('text-only mode returns Atlas Search scores and highlight fragments', async () => {
+  it('text-only mode returns MongoDB Search scores and highlight fragments', async () => {
     const result = await h.service.searchKnowledge(
       searchInput('oplog secondary election primary', { mode: 'text', limit: MAX_LIMIT }),
       h.context(),

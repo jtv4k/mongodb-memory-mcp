@@ -48,7 +48,7 @@ How to phrase the query:
 Modes:
 - hybrid (default) runs semantic and keyword search and fuses them with reciprocal rank fusion. Best for almost everything.
 - vector is semantic only. Use it for conceptual or paraphrased questions where the corpus will not share vocabulary with the query.
-- text is Atlas Search keyword only. Use it when you need an exact identifier — an error code, a function name, a ticket id — that must match literally.
+- text is MongoDB Search keyword only. Use it when you need an exact identifier — an error code, a function name, a ticket id — that must match literally.
 
 Gotchas:
 - Results are CHUNKS, not whole documents. Several hits may come from the same sourceId at different chunk indexes; that usually means the document is highly relevant.
