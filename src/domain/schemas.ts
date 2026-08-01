@@ -387,7 +387,9 @@ export const listSourcesShape = {
     .min(1)
     .max(256)
     .optional()
-    .describe('Case-insensitive substring match on title, sourceId or uri.'),
+    .describe(
+      'Case-insensitive substring match on title, sourceId or uri. Served by the documents search index, so a just-stored document can take a moment to appear.',
+    ),
   sort: z
     .enum(['updatedAt', 'createdAt', 'title', 'chunkCount'])
     .default('updatedAt')

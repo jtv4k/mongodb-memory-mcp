@@ -111,6 +111,17 @@ const SOURCE_SORT_FIELDS = {
   chunkCount: 'chunking.chunkCount',
 } as const satisfies Record<ListSourcesInput['sort'], string>;
 
+/**
+ * `$facet.total` stages for a `$search`-backed listing, reshaped to the
+ * `$count` form the non-search path produces. The count itself is computed by
+ * mongot (`count: { type: 'total' }`) and read back through `$$SEARCH_META`.
+ */
+const SEARCH_TOTAL_FACET = [
+  { $replaceWith: '$$SEARCH_META' },
+  { $limit: 1 },
+  { $project: { value: '$count.total' } },
+];
+
 export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeService {
   const { db, embeddings, config } = deps;
   const documents = documentsCollection(db);
@@ -126,6 +137,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
   /** Set once each index has been seen to exist; see {@link confirmIndex}. */
   let vectorIndexConfirmed = false;
   let textIndexConfirmed = false;
+  let documentsIndexConfirmed = false;
 
   // -------------------------------------------------------------------------
   // storeContent
@@ -626,7 +638,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
         .toArray();
     } catch (error) {
       const appError = isMissingSearchIndexError(error)
-        ? missingIndexError(config.mongo.vectorIndexName, error)
+        ? missingIndexError(config.mongo.vectorIndexName, COLLECTIONS.chunks, error)
         : new SearchError(`Vector search failed: ${describeError(error)}`, {
             cause: error,
             details: { index: config.mongo.vectorIndexName },
@@ -641,7 +653,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
       // operator hunting for missing content that is actually sitting right there.
       const queryable = await confirmIndex('vector', config.mongo.vectorIndexName);
       if (!queryable) {
-        const appError = missingIndexError(config.mongo.vectorIndexName, null);
+        const appError = missingIndexError(config.mongo.vectorIndexName, COLLECTIONS.chunks, null);
         logAppError(logger, appError, 'vector search index is not queryable');
         throw appError;
       }
@@ -666,27 +678,89 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
    * success, so the hot path never pays for it and a populated knowledge base
    * pays once at most.
    */
-  async function confirmIndex(leg: 'vector' | 'text', name: string): Promise<boolean> {
-    if (leg === 'vector' ? vectorIndexConfirmed : textIndexConfirmed) return true;
+  async function confirmIndex(
+    leg: 'vector' | 'text' | 'documents',
+    name: string,
+  ): Promise<boolean> {
+    const confirmed =
+      leg === 'vector'
+        ? vectorIndexConfirmed
+        : leg === 'text'
+          ? textIndexConfirmed
+          : documentsIndexConfirmed;
+    if (confirmed) return true;
 
-    const queryable = await searchIndexIsQueryable(db, COLLECTIONS.chunks, name);
+    const collection = leg === 'documents' ? COLLECTIONS.documents : COLLECTIONS.chunks;
+    const queryable = await searchIndexIsQueryable(db, collection, name);
     if (!queryable) return false;
 
     if (leg === 'vector') vectorIndexConfirmed = true;
-    else textIndexConfirmed = true;
+    else if (leg === 'text') textIndexConfirmed = true;
+    else documentsIndexConfirmed = true;
     return true;
   }
 
-  function missingIndexError(name: string, cause: unknown): IndexError {
+  function missingIndexError(name: string, collection: string, cause: unknown): IndexError {
     return new IndexError(
-      `Search index "${name}" is missing or not yet queryable on ${COLLECTIONS.chunks}. ` +
+      `Search index "${name}" is missing or not yet queryable on ${collection}. ` +
         'Run "npm run db:indexes" to create it, then retry.',
       {
         ...(cause === null ? {} : { cause }),
-        details: { index: name, collection: COLLECTIONS.chunks },
+        details: { index: name, collection },
         retryable: true,
       },
     );
+  }
+
+  /**
+   * Error boundary for the `$search`-backed browse listing.
+   *
+   * Browse search is an explicit request against one index, so unlike the
+   * hybrid text leg there is nothing to degrade to: a failure surfaces as the
+   * right AppError instead. `guarded` is wrong here — it would file a search
+   * failure under `storage.failed`.
+   */
+  async function browseSearch<T>(
+    logger: Logger,
+    operation: string,
+    run: () => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await run();
+    } catch (error) {
+      if (isAppError(error)) throw error;
+      const appError = isMissingSearchIndexError(error)
+        ? missingIndexError(config.mongo.documentsTextIndexName, COLLECTIONS.documents, error)
+        : new SearchError(`Browse search failed: ${describeError(error)}`, {
+            cause: error,
+            details: { index: config.mongo.documentsTextIndexName, operation },
+          });
+      logAppError(logger, appError, 'browse search failed');
+      throw appError;
+    }
+  }
+
+  /**
+   * Atlas Local answers a query against a missing index with an empty result
+   * set, so a zero-hit browse search is ambiguous. Resolve it the way the
+   * vector leg does: probe once, and treat a missing index as fatal — silently
+   * listing nothing would send an operator hunting for documents that are
+   * sitting right there.
+   */
+  async function assertBrowseSearchServed(total: number, logger: Logger): Promise<void> {
+    if (total > 0) {
+      documentsIndexConfirmed = true;
+      return;
+    }
+    if (await confirmIndex('documents', config.mongo.documentsTextIndexName)) return;
+
+    const appError = missingIndexError(
+      config.mongo.documentsTextIndexName,
+      COLLECTIONS.documents,
+      null,
+    );
+    logAppError(logger, appError, 'documents search index is not queryable');
+    throw appError;
   }
 
   async function runTextLeg(
@@ -729,7 +803,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     if (rows.length === 0 && !(await confirmIndex('text', config.mongo.textIndexName))) {
       return {
         status: 'failed',
-        error: missingIndexError(config.mongo.textIndexName, null),
+        error: missingIndexError(config.mongo.textIndexName, COLLECTIONS.chunks, null),
         missingIndex: true,
       };
     }
@@ -762,7 +836,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     const appError = isAppError(error)
       ? error
       : isMissingSearchIndexError(error)
-        ? missingIndexError(config.mongo.textIndexName, error)
+        ? missingIndexError(config.mongo.textIndexName, COLLECTIONS.chunks, error)
         : new SearchError(`Text search failed: ${describeError(error)}`, { cause: error });
 
     logAppError(logger, appError, 'text search leg failed');
@@ -900,64 +974,84 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     input: ListSourcesInput,
     ctx: RequestContext,
   ): Promise<ListSourcesResult> {
-    const match = buildDocumentMatch(input.tag, input.search);
     const direction = input.order === 'asc' ? 1 : -1;
     const sortField = SOURCE_SORT_FIELDS[input.sort];
 
-    const [facet] = await guarded(ctx.logger, 'documents.listSources', () =>
-      documents
-        .aggregate<FacetResult<SourceRow>>([
-          { $match: match },
+    const pageStages: Document[] = [
+      { $skip: input.offset },
+      { $limit: input.limit },
+      {
+        // Joined after the page is cut, so the per-source chunk stats are
+        // computed for `limit` documents, not for the whole match.
+        $lookup: {
+          from: COLLECTIONS.chunks,
+          localField: '_id',
+          foreignField: 'documentId',
+          as: 'chunkStats',
+          pipeline: [
+            {
+              $group: {
+                _id: null,
+                chunkCount: { $sum: 1 },
+                embeddingModels: { $addToSet: '$embeddingModel' },
+              },
+            },
+          ],
+        },
+      },
+      {
+        $project: {
+          sourceId: 1,
+          title: 1,
+          uri: 1,
+          contentType: 1,
+          tags: 1,
+          contentLength: 1,
+          version: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          stats: { $first: '$chunkStats' },
+        },
+      },
+    ];
+
+    // `$search` sorts on indexed fields only, so `_id` cannot break ties there;
+    // dates tie on the millisecond at worst, but counts and titles tie often
+    // enough to earn a recency tie-break.
+    const searchSort: Document = { [sortField]: direction };
+    if (sortField !== 'updatedAt') searchSort['updatedAt'] = -1;
+
+    // Both shapes are one round trip: a separate countDocuments would be a
+    // second pass over the same match, and could disagree with the page under
+    // concurrent writes.
+    const pipeline: Document[] = input.search
+      ? [
+          buildDocumentSearchStage(
+            config.mongo.documentsTextIndexName,
+            input.search,
+            input.tag,
+            searchSort,
+          ),
+          { $facet: { total: SEARCH_TOTAL_FACET, page: pageStages } },
+        ]
+      : [
+          { $match: buildDocumentMatch(input.tag) },
           {
-            // One round trip: a separate countDocuments would be a second pass
-            // over the same match, and could disagree with the page under
-            // concurrent writes.
             $facet: {
               total: [{ $count: 'value' }],
-              page: [
-                // `_id` breaks ties so pagination cannot repeat or skip a row.
-                { $sort: { [sortField]: direction, _id: direction } },
-                { $skip: input.offset },
-                { $limit: input.limit },
-                {
-                  // Joined after the page is cut, so the per-source chunk stats
-                  // are computed for `limit` documents, not for the whole match.
-                  $lookup: {
-                    from: COLLECTIONS.chunks,
-                    localField: '_id',
-                    foreignField: 'documentId',
-                    as: 'chunkStats',
-                    pipeline: [
-                      {
-                        $group: {
-                          _id: null,
-                          chunkCount: { $sum: 1 },
-                          embeddingModels: { $addToSet: '$embeddingModel' },
-                        },
-                      },
-                    ],
-                  },
-                },
-                {
-                  $project: {
-                    sourceId: 1,
-                    title: 1,
-                    uri: 1,
-                    contentType: 1,
-                    tags: 1,
-                    contentLength: 1,
-                    version: 1,
-                    createdAt: 1,
-                    updatedAt: 1,
-                    stats: { $first: '$chunkStats' },
-                  },
-                },
-              ],
+              // `_id` breaks ties so pagination cannot repeat or skip a row.
+              page: [{ $sort: { [sortField]: direction, _id: direction } }, ...pageStages],
             },
           },
-        ])
-        .toArray(),
-    );
+        ];
+
+    const run = () => documents.aggregate<FacetResult<SourceRow>>(pipeline).toArray();
+    const [facet] = input.search
+      ? await browseSearch(ctx.logger, 'documents.listSources', run)
+      : await guarded(ctx.logger, 'documents.listSources', run);
+
+    const total = facet?.total[0]?.value ?? 0;
+    if (input.search) await assertBrowseSearchServed(total, ctx.logger);
 
     const sources: SourceSummary[] = (facet?.page ?? []).map((row) => ({
       sourceId: row.sourceId,
@@ -976,12 +1070,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
       updatedAt: row.updatedAt,
     }));
 
-    return {
-      sources,
-      total: facet?.total[0]?.value ?? 0,
-      limit: input.limit,
-      offset: input.offset,
-    };
+    return { sources, total, limit: input.limit, offset: input.offset };
   }
 
   // -------------------------------------------------------------------------
@@ -1066,41 +1155,46 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     input: ListDocumentsInput,
     ctx: RequestContext,
   ): Promise<ListDocumentsResult> {
-    const match = buildDocumentMatch(input.tag, input.search);
+    const pageStages: Document[] = [
+      { $skip: input.offset },
+      { $limit: input.limit },
+      // The excerpt is cut server-side and `content` is dropped, so a browse
+      // page never pulls megabytes of body text over the wire.
+      { $addFields: { excerpt: { $substrCP: ['$content', 0, EXCERPT_SOURCE_CHARS] } } },
+      { $project: { content: 0 } },
+    ];
 
-    const [facet] = await guarded(ctx.logger, 'documents.listDocuments', () =>
-      documents
-        .aggregate<FacetResult<DocumentListRow>>([
-          { $match: match },
+    const pipeline: Document[] = input.search
+      ? [
+          buildDocumentSearchStage(config.mongo.documentsTextIndexName, input.search, input.tag, {
+            updatedAt: -1,
+          }),
+          { $facet: { total: SEARCH_TOTAL_FACET, page: pageStages } },
+        ]
+      : [
+          { $match: buildDocumentMatch(input.tag) },
           {
             $facet: {
               total: [{ $count: 'value' }],
-              page: [
-                { $sort: { updatedAt: -1, _id: -1 } },
-                { $skip: input.offset },
-                { $limit: input.limit },
-                // The excerpt is cut server-side and `content` is dropped, so a
-                // browse page never pulls megabytes of body text over the wire.
-                { $addFields: { excerpt: { $substrCP: ['$content', 0, EXCERPT_SOURCE_CHARS] } } },
-                { $project: { content: 0 } },
-              ],
+              page: [{ $sort: { updatedAt: -1, _id: -1 } }, ...pageStages],
             },
           },
-        ])
-        .toArray(),
-    );
+        ];
+
+    const run = () => documents.aggregate<FacetResult<DocumentListRow>>(pipeline).toArray();
+    const [facet] = input.search
+      ? await browseSearch(ctx.logger, 'documents.listDocuments', run)
+      : await guarded(ctx.logger, 'documents.listDocuments', run);
+
+    const total = facet?.total[0]?.value ?? 0;
+    if (input.search) await assertBrowseSearchServed(total, ctx.logger);
 
     const documentsPage = (facet?.page ?? []).map((row) => {
       const { _id, excerpt, ...rest } = row;
       return { ...rest, id: _id.toHexString(), excerpt: condenseExcerpt(excerpt) };
     });
 
-    return {
-      documents: documentsPage,
-      total: facet?.total[0]?.value ?? 0,
-      limit: input.limit,
-      offset: input.offset,
-    };
+    return { documents: documentsPage, total, limit: input.limit, offset: input.offset };
   }
 
   async function getDocument(
@@ -1472,25 +1566,56 @@ function normalizeTags(tags: readonly string[] | undefined): string[] {
   return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter((tag) => tag.length > 0))];
 }
 
-function buildDocumentMatch(
-  tag: string | undefined,
-  search: string | undefined,
-): Filter<DocumentDoc> {
+function buildDocumentMatch(tag: string | undefined): Filter<DocumentDoc> {
   const match: Filter<DocumentDoc> = {};
   if (tag) match.tags = tag.toLowerCase();
-
-  if (search) {
-    // Escaped: the search term is untrusted, and an unescaped `(a+)+` would be
-    // a denial of service rather than a search.
-    const pattern = new RegExp(escapeRegExp(search), 'iu');
-    match.$or = [{ title: pattern }, { sourceId: pattern }, { uri: pattern }];
-  }
-
   return match;
 }
 
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+/**
+ * The browse `search` parameter as one `$search` stage.
+ *
+ * The contract is a case-insensitive substring match on title, sourceId and
+ * uri. A `$regex` cannot deliver that on an index — case folding defeats
+ * b-tree bounds even when anchored, and this match is unanchored — so it runs
+ * as a Lucene `wildcard` against fields the keywordLowercase analyzer in
+ * documents.text.json indexed as one lowercased term each. Wildcard queries
+ * are never analyzed, so the query lowercases here to mirror that analyzer.
+ */
+function buildDocumentSearchStage(
+  index: string,
+  search: string,
+  tag: string | undefined,
+  sort: Document,
+): Document {
+  const wildcard = {
+    query: `*${escapeWildcard(search.toLowerCase())}*`,
+    path: ['title', 'sourceId', 'uri'],
+    allowAnalyzedField: true,
+  };
+
+  return {
+    $search: {
+      index,
+      ...(tag
+        ? {
+            compound: {
+              must: [{ wildcard }],
+              filter: [{ equals: { path: 'tags', value: tag.toLowerCase() } }],
+            },
+          }
+        : { wildcard }),
+      // The exact figure, not the default lowerBound estimate: `total` is a
+      // pagination contract, and the non-search path counts exactly too.
+      count: { type: 'total' },
+      sort,
+    },
+  };
+}
+
+/** `*` and `?` are Lucene wildcard operators; a literal search must escape them. */
+function escapeWildcard(value: string): string {
+  return value.replace(/[*?\\]/gu, '\\$&');
 }
 
 function condenseExcerpt(excerpt: string): string {
@@ -1500,7 +1625,7 @@ function condenseExcerpt(excerpt: string): string {
 }
 
 /**
- * Codes Mongo returns when a transaction is impossible rather than merely
+ * Codes MongoDB returns when a transaction is impossible rather than merely
  * failed: no replica set (20), an operation that cannot run in one (263), and
  * the two size ceilings (257, 10334).
  */
