@@ -62,7 +62,7 @@ services:
       # timings apply. First boot has to initialise a single-node replica set
       # and start mongot, which takes 20-40s on a warm image and longer on a
       # cold one; without a generous start_period the app's depend_on gives up
-      # before Mongo was ever going to be reachable.
+      # before MongoDB was ever going to be reachable.
       test: ['CMD', '/usr/local/bin/runner', 'healthcheck']
       interval: 10s
       timeout: 10s

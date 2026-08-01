@@ -9,17 +9,15 @@
  * nothing.
  *
  * That silence is the problem. Every other failure here emits an `mcp.*` event,
- * so an operator reading the logs sees a tool call that produced no success and
- * no failure, which is indistinguishable from one that hung. A
- * `contentType: "text/markdown"` rejection was diagnosed as a timeout for
- * exactly this reason, and the message that would have explained it in one line
- * was only visible in the proxy's log.
+ * so without this hook an operator reading the logs sees a tool call that
+ * produced no success and no failure — indistinguishable from one that hung.
  *
  * So this wraps the SDK's handler to log the rejection, and to re-render it with
  * the same remediation line every other failure gets — the SDK's own text stops
  * at what was wrong and never says what to do about it. Both matter downstream:
- * mcpo turns an `isError` result into a 500, and Open WebUI shows the model
- * nothing, so the clearer the text the better its chances of self-correcting.
+ * some OpenAPI bridges (the demo stack's mcpo, for one) map an `isError` result
+ * onto a 500 and show the model nothing, so the clearer the text the better the
+ * caller's chances of self-correcting.
  *
  * The SDK exposes no way to read back a handler it registered, so the original
  * is taken from a private field. If that ever disappears the hook declines to

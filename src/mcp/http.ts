@@ -67,11 +67,9 @@ const JSONRPC_INVALID_REQUEST = -32600;
  *
  * `transport.onclose` reaps a session when the client DELETEs it or its
  * connection drops — but a client is under no obligation to do either. A POST
- * that completes an `initialize` handshake and is never followed up leaves a
- * live `McpServer` and transport in the map forever, so the map grew without
- * bound and a caller holding the shared token could exhaust memory just by
- * looping `initialize`. (`createdAt` was already being recorded here; nothing
- * ever read it.)
+ * that completes an `initialize` handshake and is never followed up would
+ * leave a live `McpServer` and transport in the map forever — a caller holding
+ * the shared token could exhaust memory just by looping `initialize`.
  *
  * Idle rather than absolute age: a long-lived client doing real work every few
  * minutes must not have its session pulled out from under it, whereas one that

@@ -1,11 +1,9 @@
 /**
  * Secret scrubbing for any text that leaves this process.
  *
- * This used to live in `mcp/tools/shared.ts`, which meant the MCP surface
- * scrubbed its error messages and the HTTP surface did not — the same
- * `AppError` could be safe over MCP and leaking over REST. It is a shared
- * boundary concern, so it lives at the root next to `errors.ts` and both
- * transports call it.
+ * Scrubbing is a shared boundary concern, so it lives at the root next to
+ * `errors.ts` and every transport calls the same implementation — the same
+ * `AppError` must never be safe over MCP and leaking over REST.
  *
  * Two passes, cheapest first:
  *

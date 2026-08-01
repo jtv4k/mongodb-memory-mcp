@@ -2,7 +2,7 @@
  * `npm run db:reembed` — re-embed chunks whose vectors came from a different
  * model or a different width than the one currently configured.
  *
- * This is the operational half of the re-embedding strategy the spec requires.
+ * This is the operational half of the re-embedding strategy.
  * Every chunk records `embeddingProvider` / `embeddingModel` /
  * `embeddingDimensions`, so changing `EMBEDDING_MODEL` never orphans data — it
  * just makes the existing vectors *stale*, and this command walks them forward.
@@ -14,7 +14,8 @@
  *
  * Search stays correct while a backfill is in flight because queries are
  * constrained to the configured model — half-migrated chunks are invisible
- * rather than wrong. See `.claude/skills/embedding-model-migration/SKILL.md`.
+ * rather than wrong. See the embedding-model-migration runbook under
+ * `.claude/skills/`.
  *
  * Exit codes are the contract for automation: 0 means nothing is stale any more
  * (or, under --dry-run, that the plan was reported); 1 means a human is needed.
@@ -28,9 +29,9 @@ import { parseInput, reembedSchema } from '../domain/schemas.js';
 import type { EmbeddingCoverage, ReembedResult } from '../domain/types.js';
 import { createEmbeddingProvider } from '../embeddings/factory.js';
 import { describeError } from '../errors.js';
+import { createLogger, logAppError, type Logger } from '../logger.js';
 import { createKnowledgeService } from '../services/index.js';
 import type { RequestContext } from '../services/types.js';
-import { createLogger, logAppError, type Logger } from '../logger.js';
 
 const USAGE = `
 Usage: npm run db:reembed -- [options]
@@ -51,8 +52,8 @@ Options:
   -h, --help                 Show this message.
 
 The vector index numDimensions must already equal the target width. If the width
-changed, recreate the index BEFORE running this — see the
-vector-index-management skill.
+changed, recreate the index BEFORE running this — update the definition in
+src/db/index-definitions/ and apply it with npm run db:indexes.
 `.trim();
 
 /** Module-scoped so the top-level failure handler can log through it. */

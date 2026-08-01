@@ -1,5 +1,5 @@
 /**
- * The round trip the spec demands: `store_content` → `search_knowledge`, against
+ * The core round trip: `store_content` → `search_knowledge`, against
  * a real Atlas Local with a real MongoDB Vector Search index.
  *
  * Nothing here is mocked except the embedding vendor. In particular the vector
@@ -91,7 +91,7 @@ describe('ingestion', () => {
     const document = await h.documents.findOne({ sourceId: ATLAS_GUIDE.sourceId });
     expect(document).not.toBeNull();
 
-    // The spec's unbounded-array anti-pattern, asserted directly on the raw row.
+    // The unbounded-array anti-pattern, asserted directly on the raw row.
     expect(document).not.toHaveProperty('chunks');
     expect(document).not.toHaveProperty('embedding.vector');
     expect(document?.content).toBe(ATLAS_GUIDE.content);

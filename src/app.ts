@@ -25,12 +25,12 @@
  *
  * ## Why `express.json()` is not global
  *
- * It used to be mounted here, above the MCP handler, which put it above every
- * auth check in the process. Body-parser buffers and `JSON.parse`s the whole
- * payload before the next middleware runs, so an *unauthenticated* client could
- * make the server allocate and parse up to `JSON_BODY_LIMIT` on any path — the
- * 401 was only written afterwards. That is a pre-auth memory and CPU
- * amplification primitive, and it applied to paths that take no body at all.
+ * Body-parser buffers and `JSON.parse`s the whole payload before the next
+ * middleware runs. Mounted globally it would sit above every auth check in the
+ * process, so an *unauthenticated* client could make the server allocate and
+ * parse up to `JSON_BODY_LIMIT` on any path before the 401 was written — a
+ * pre-auth memory and CPU amplification primitive, on paths that take no body
+ * at all.
  *
  * The parser is therefore mounted per-route and always *after* the route's auth
  * middleware, so an unauthenticated request is rejected while its body is still

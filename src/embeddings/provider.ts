@@ -26,7 +26,7 @@ export interface EmbeddingProviderInfo {
   provider: string;
   /** Model identifier, e.g. 'voyage-context-3'. Persisted on every chunk. */
   model: string;
-  /** Vector length. MUST equal the `numDimensions` of the Atlas vector index. */
+  /** Vector length. MUST equal the `numDimensions` of the MongoDB Vector Search index. */
   dimensions: number;
   /** True when chunk vectors are conditioned on their sibling chunks. */
   contextual: boolean;

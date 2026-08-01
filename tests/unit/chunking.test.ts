@@ -206,7 +206,7 @@ describe('estimateTokens', () => {
 
   it('stays within 15% of a hand-counted BPE figure for a prose sentence', () => {
     const sentence =
-      'MongoDB MongoDB Vector Search enables semantic retrieval over embeddings ' +
+      'MongoDB Vector Search enables semantic retrieval over embeddings ' +
       'stored alongside your operational data.';
     // cl100k_base: 16 tokens.
     const estimate = estimateTokens(sentence);

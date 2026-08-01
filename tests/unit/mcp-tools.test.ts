@@ -412,9 +412,9 @@ describe('store_content input rejection', () => {
     expect(outcome.text).toContain('Correct the arguments listed above and call the tool again.');
   });
 
-  // The field reads like a Content-Type header, so models send header values
-  // for it. A real client sent "text/markdown" and the call failed with only a
-  // schema error to go on, which is an expensive way to learn the enum.
+  // The field reads like a Content-Type header, so clients send header values
+  // for it; folding the unambiguous ones onto the enum is cheaper than making
+  // a caller learn the enum from a schema error.
   it.each([
     ['text/markdown', 'markdown'],
     ['text/markdown; charset=utf-8', 'markdown'],
@@ -867,8 +867,8 @@ describe('createMcpHttpHandler routing', () => {
 // ---------------------------------------------------------------------------
 
 /**
- * The `$`/prototype-key guard used to walk only `Object.keys(metadata)`, so a
- * nested object slipped straight past it.
+ * The `$`/prototype-key guard walks the whole tree, not just the top level —
+ * a nested object must not slip past it.
  *
  * Object literals cannot express these cases: `{ __proto__: x }` invokes the
  * prototype setter rather than creating an own property, which is exactly the

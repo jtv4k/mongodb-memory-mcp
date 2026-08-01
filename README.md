@@ -1,10 +1,10 @@
 # MongoDB RAG KB MCP
 
 Have you ever explained the same thing to an AI assistant three times in one
-week? I have. The context window closes, the session ends, and everything the
+week? The context window closes, the session ends, and everything the
 assistant learned goes with it.
 
-This is my answer to that. It is an MCP server sitting on top of MongoDB. An AI
+This project is an answer to that: an MCP server sitting on top of MongoDB. An AI
 client hands it content over the [Model Context Protocol](https://modelcontextprotocol.io);
 the server splits that content with a structure-aware chunker, embeds the chunks
 with Voyage AI, and stores them in MongoDB behind MongoDB Vector Search and MongoDB
@@ -116,7 +116,7 @@ document has its own page. `/` redirects to `/search`.
 ## Using the REST API
 
 Every `/api/*` route requires the token, **reads included**. That is deliberate,
-and I will defend it: the process is network-reachable, so an open read surface
+not an oversight: the process is network-reachable, so an open read surface
 hands your entire knowledge base to anyone who can reach the port. The direct
 consequence is that the web pages call the service in-process instead of
 fetching `/api/*`, so no token ever reaches a browser.
@@ -230,6 +230,7 @@ Setup details and troubleshooting live in `docker/open-webui/README.md`.
 All Node tooling runs in a container. Run these from the project root.
 
 ```bash
+./scripts/ndocker.sh npm ci                 # once per clone — populates node_modules
 ./scripts/ndocker.sh npm run typecheck      # tsc --noEmit over the whole project
 ./scripts/ndocker.sh npm run lint           # eslint
 ./scripts/ndocker.sh npm run format:check   # prettier, the CI check
@@ -275,7 +276,8 @@ includes stray cache entries and npm logfiles.
 
 ### Pre-commit hook
 
-Lint-staged plus a whole-project typecheck, both in a container. Install it once
+Lint-staged plus a whole-project typecheck, both in a container. It needs
+`node_modules` populated (`./scripts/ndocker.sh npm ci` above). Install it once
 per clone — npm's `prepare` cannot, since it runs inside a container with no
 git:
 
@@ -313,26 +315,25 @@ keeping them as code.
 
 ## Project layout
 
-| Path                         | What lives there                                                      |
-| ---------------------------- | --------------------------------------------------------------------- |
-| `src/index.ts`, `src/app.ts` | Process entrypoint and Express assembly                               |
-| `src/config/env.ts`          | The only module that reads the environment; zod-validated `AppConfig` |
-| `src/domain/`                | Persistence types and every zod schema for external input             |
-| `src/db/`                    | Connection, typed collections, index management                       |
-| `src/db/index-definitions/`  | **Canonical** MongoDB Search / Vector Search JSON                     |
-| `src/chunking/`              | Pure, structure-aware chunker                                         |
-| `src/embeddings/`            | `EmbeddingProvider` interface, Voyage provider, offline fake, factory |
-| `src/services/`              | `KnowledgeService` — all business logic; rank fusion; highlighting    |
-| `src/mcp/`                   | MCP server, Streamable HTTP transport, auth, one module per tool      |
-| `src/http/`                  | REST router, health probes, request ids, error handling, web routes   |
-| `src/views/`, `src/styles/`  | EJS templates and the Tailwind input stylesheet                       |
-| `src/cli/`                   | `db:indexes` and `db:reembed` entrypoints                             |
-| `tests/unit/`                | No database, no network                                               |
-| `tests/integration/`         | Real Atlas Local, real vector index                                   |
-| `docker/`                    | Dockerfile, compose base + dev override, Atlas Local bind mounts      |
-| `scripts/ndocker.sh`         | The containerised Node wrapper                                        |
-| `CLAUDE.md`                  | Architecture and conventions, for AI sessions and humans alike        |
-| `SPEC.md`                    | The original product spec                                             |
+| Path                         | What lives there                                                            |
+| ---------------------------- | --------------------------------------------------------------------------- |
+| `src/index.ts`, `src/app.ts` | Process entrypoint and Express assembly                                     |
+| `src/config/env.ts`          | The only module that reads the environment; zod-validated `AppConfig`       |
+| `src/domain/`                | Persistence types and every zod schema for external input                   |
+| `src/db/`                    | Connection, typed collections, index management                             |
+| `src/db/index-definitions/`  | **Canonical** MongoDB Search / Vector Search JSON                           |
+| `src/chunking/`              | Pure, structure-aware chunker                                               |
+| `src/embeddings/`            | `EmbeddingProvider` interface, Voyage provider, offline fake, factory       |
+| `src/services/`              | `KnowledgeService` — all business logic; rank fusion; highlighting          |
+| `src/mcp/`                   | MCP server, Streamable HTTP transport, auth, one module per tool            |
+| `src/http/`                  | REST router, health probes, request ids, error handling, web routes         |
+| `src/views/`, `src/styles/`  | EJS templates and the Tailwind input stylesheet                             |
+| `src/cli/`                   | `db:indexes` and `db:reembed` entrypoints                                   |
+| `tests/unit/`                | No database, no network                                                     |
+| `tests/integration/`         | Real Atlas Local, real vector index                                         |
+| `docker/`                    | Dockerfile, compose base + dev/demo overrides, Atlas Local, Open WebUI demo |
+| `scripts/`                   | `ndocker.sh` (containerised Node wrapper), asset copy, demo seeder          |
+| `CLAUDE.md`                  | Architecture and conventions, for AI sessions and humans alike              |
 
 ---
 

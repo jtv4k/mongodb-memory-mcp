@@ -1,7 +1,8 @@
 /**
  * Index management: every index this app needs, applied as code.
  *
- * The spec forbids creating indexes by hand in the Atlas UI. The canonical MongoDB
+ * Indexes are never created by hand in the Atlas UI — the UI is not the source
+ * of truth. The canonical MongoDB
  * Search / Vector Search definitions live in `./index-definitions/*.json` and this
  * module is the only thing that applies them, so Atlas Local, CI and cloud Atlas
  * all converge on the same shape from the same source of truth.
@@ -88,7 +89,7 @@ function asDefinition(raw: unknown, file: string): Document {
   return cleaned;
 }
 
-/** The vector index exactly as checked in, minus `$comment`. `numDimensions` is a placeholder. */
+/** The vector index exactly as checked in, minus `$comment`. `numDimensions` here is the shipped default; it is overridden from config at apply time. */
 export const CHUNKS_VECTOR_BASE_DEFINITION = asDefinition(
   chunksVectorJson,
   'chunks.vector.json',

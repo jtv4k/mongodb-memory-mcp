@@ -10,9 +10,9 @@
  * ## The escaping rule
  *
  * `renderFragmentHtml` is a security boundary, not a convenience. Chunk text is
- * ingested content: it is written by whoever the AI client was reading, it is
- * never sanitised on the way in (we store it verbatim on purpose), and it is
- * rendered into a server-side EJS page. Every character of it therefore goes
+ * ingested content: an AI client uploaded it, it is never sanitised on the way
+ * in (we store it verbatim on purpose), and it is rendered into a server-side
+ * EJS page. Every character of it therefore goes
  * through {@link escapeHtml} before it is concatenated into markup, and the only
  * unescaped bytes in the output are the `<mark>` tags this module writes itself.
  *

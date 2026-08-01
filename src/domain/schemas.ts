@@ -127,12 +127,12 @@ const MAX_METADATA_DEPTH = 16;
  * Reject `__proto__`/`constructor`/`prototype` and `$`-prefixed keys at EVERY
  * level, not just the top one.
  *
- * The original check only walked `Object.keys(value)`, so `{ a: { $ne: 1 } }`
- * and `{ a: { __proto__: … } }` both sailed through. Neither is exploitable
- * today — `JSON.parse` makes `__proto__` an ordinary own property rather than
- * a setter call, and metadata is only ever stored, never spread into a filter
- * or an update document — so this is closing the gap between what the guard
- * claimed and what it did, before some later caller makes the assumption real.
+ * A top-level-only check would let `{ a: { $ne: 1 } }` and
+ * `{ a: { __proto__: … } }` sail through. Neither is exploitable while metadata
+ * is only stored — `JSON.parse` makes `__proto__` an ordinary own property, and
+ * nothing spreads metadata into a filter or an update document — but the guard
+ * holds at every level so a future caller that does inherits the protection it
+ * assumes.
  *
  * Issues are accumulated rather than thrown, so one call reports every bad key.
  */

@@ -19,7 +19,7 @@ export interface MongoConnection {
   close: () => Promise<void>;
 }
 
-export function createMongoClient(cfg: MongoConfig): MongoClient {
+function createMongoClient(cfg: MongoConfig): MongoClient {
   return new MongoClient(cfg.uri, {
     maxPoolSize: cfg.maxPoolSize,
     serverSelectionTimeoutMS: cfg.serverSelectionTimeoutMs,

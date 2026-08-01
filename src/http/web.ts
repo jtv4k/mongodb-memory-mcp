@@ -19,7 +19,7 @@
  * ## Rendering untrusted content
  *
  * Everything on these pages — chunk text, titles, tags, URIs, metadata — is
- * content somebody's AI client uploaded, stored verbatim on purpose and never
+ * content an AI client uploaded, stored verbatim on purpose and never
  * sanitised on the way in. The templates therefore use `<%= %>` for all of it.
  * The single exception is the highlighted snippet, which is HTML because it
  * carries `<mark>` tags, and which is produced *only* by `renderFragmentsHtml`

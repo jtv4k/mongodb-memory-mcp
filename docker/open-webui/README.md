@@ -16,9 +16,9 @@ It asks for your Ollama URL, optionally a model to build a preset around, then
 starts everything. Say yes when it offers to apply the search indexes — on a
 clean database, search returns nothing until you do.
 
-Then open <http://localhost:8080>, and in the sidebar open **Workspace** and pick
-**MongoDB KB**. There is no sign-in, and the knowledge-base tools are already
-attached to that model.
+Then open <http://localhost:8080>. If you gave the script a model, open
+**Workspace** in the sidebar and pick **MongoDB KB** — the knowledge-base tools
+are already attached to that preset. There is no sign-in.
 
 Re-run the script whenever your Ollama URL or model changes. It rewrites both
 through Open WebUI's admin API, so nothing needs resetting.

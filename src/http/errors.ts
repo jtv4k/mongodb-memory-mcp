@@ -20,9 +20,8 @@
  *         first. A `SearchError` quotes `describeError(cause)`, and a driver
  *         error quotes the connection string, which carries the password.
  *
- *     The MCP surface has always redacted (`mcp/tools/shared.ts`). Doing it in
- *     only one of the two transports meant the same `AppError` was safe over MCP
- *     and leaking over REST, so both now call the same helper.
+ *     Both transports call the same helper (`redact.ts`), so the same
+ *     `AppError` cannot be safe over MCP and leaking over REST.
  *
  *  2. **The response format follows the caller.** `/api/*` and the MCP endpoint
  *     always get JSON; a browser navigating the web UI gets the rendered

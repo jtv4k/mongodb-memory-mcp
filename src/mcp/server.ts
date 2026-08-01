@@ -41,7 +41,7 @@ export interface McpServerDeps {
   logger: Logger;
 }
 
-const INSTRUCTIONS = `This server is a persistent, semantically searchable knowledge base backed by MongoDB MongoDB Vector Search. Treat it as long-term memory that outlives this conversation and is shared with other agents and sessions.
+const INSTRUCTIONS = `This server is a persistent, semantically searchable knowledge base backed by MongoDB Vector Search. Treat it as long-term memory that outlives this conversation and is shared with other agents and sessions.
 
 Default workflow:
 1. SEARCH FIRST. Before answering anything that touches project-specific material — internal docs, design decisions, API contracts, runbooks, prior investigations — call search_knowledge. Prefer what you retrieve over what you recall, and cite the sourceId of anything you use so a human can verify it.

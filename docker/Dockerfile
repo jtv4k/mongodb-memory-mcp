@@ -130,7 +130,7 @@ COPY --from=build --chown=node:node /app/package.json ./package.json
 
 EXPOSE ${PORT}
 
-# Liveness only — /healthz has no dependencies, so a Mongo outage does not make
+# Liveness only — /healthz has no dependencies, so a MongoDB outage does not make
 # Docker kill an otherwise healthy process (that is what /readyz is for).
 # Node 24 has global fetch, so this needs no curl and keeps the image slim.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

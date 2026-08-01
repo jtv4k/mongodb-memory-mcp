@@ -636,9 +636,9 @@ function documentRow() {
     ingest: {
       at: new Date('2026-02-03T04:05:06.000Z'),
       channel: 'mcp',
-      agent: 'claude-code',
+      agent: 'example-agent',
       sessionId: 'sess-1',
-      clientName: 'claude',
+      clientName: 'example-mcp-client',
       clientVersion: '1.0.0',
     },
     chunking: {
@@ -696,7 +696,7 @@ function documentDetail() {
 /**
  * Its own app instance, deliberately.
  *
- * The auth middleware now throttles repeated failures per source IP, and the
+ * The auth middleware throttles repeated failures per source IP, and the
  * counter lives inside one middleware instance. Sharing the module-level `app`
  * would make these tests spend the same budget as the 401 tests above — and
  * make either group's result depend on how many unauthenticated requests some
@@ -706,9 +706,9 @@ const preAuthApp = await startApp();
 
 describe('pre-auth body handling', () => {
   /**
-   * `express.json()` used to be mounted globally, above every auth check, so an
-   * unauthenticated client could make the process buffer and parse a body up to
-   * the 12mb limit before the 401 was written.
+   * `express.json()` is mounted per-route, below auth, so an unauthenticated
+   * client cannot make the process buffer and parse a body up to the 12mb
+   * limit before the 401 is written.
    *
    * Malformed JSON is the cheap probe for the ordering: whichever middleware
    * runs first decides the status. 400 would mean body-parser still runs first.

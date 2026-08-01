@@ -24,7 +24,7 @@
  *
  * For the same reason every vector is length-checked against `info.dimensions`:
  * a short vector is not a query-time error, it is a document that is silently
- * missing from the Atlas vector index forever.
+ * missing from the MongoDB Vector Search index forever.
  */
 import type { EmbeddingConfig } from '../config/env.js';
 import { ConfigError, describeError, EmbeddingError, ValidationError } from '../errors.js';
@@ -264,7 +264,7 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
       inputs: batch.map((group) => [...group]),
       model: this.info.model,
       input_type: inputType,
-      // Always pinned: the Atlas vector index declares a fixed `numDimensions`,
+      // Always pinned: the MongoDB Vector Search index declares a fixed `numDimensions`,
       // so letting the model pick would be a silent index mismatch.
       output_dimension: this.info.dimensions,
       output_dtype: 'float',

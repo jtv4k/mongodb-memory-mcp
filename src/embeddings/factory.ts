@@ -44,7 +44,7 @@ function instantiate(cfg: EmbeddingConfig, logger: Logger): EmbeddingProvider {
     case 'fake':
       // The fake still reports the configured model and dimensions: provenance
       // stamped on a chunk has to match what a later re-embed run compares
-      // against, and the vector length has to match the Atlas index either way.
+      // against, and the vector length has to match the vector index either way.
       return new FakeEmbeddingProvider({
         dimensions: cfg.dimensions,
         model: cfg.model,
