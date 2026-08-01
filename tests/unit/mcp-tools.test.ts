@@ -397,6 +397,48 @@ describe('store_content input rejection', () => {
     expect(harness.service.storeContent).not.toHaveBeenCalled();
   });
 
+  // The SDK validates arguments before our callback runs, so this rejection
+  // never reaches runTool. Without the wrapper it leaves the server as a bare
+  // protocol error: nothing logged, and nothing a model can read or act on.
+  it('turns an SDK-level argument rejection into a readable result', async () => {
+    const outcome = await call(harness, 'store_content', {
+      content: 'x',
+      contentType: 'pdf',
+    });
+
+    expect(outcome.isError).toBe(true);
+    expect(outcome.text).toContain('store_content failed');
+    expect(outcome.text).toContain('markdown');
+    expect(outcome.text).toContain('Correct the arguments listed above and call the tool again.');
+  });
+
+  // The field reads like a Content-Type header, so models send header values
+  // for it. A real client sent "text/markdown" and the call failed with only a
+  // schema error to go on, which is an expensive way to learn the enum.
+  it.each([
+    ['text/markdown', 'markdown'],
+    ['text/markdown; charset=utf-8', 'markdown'],
+    ['text/x-markdown', 'markdown'],
+    ['MD', 'markdown'],
+    ['text/plain', 'text'],
+    ['application/json', 'json'],
+    ['text/html', 'html'],
+    ['application/x-sh', 'code'],
+  ])('normalises contentType %s to %s', async (supplied, expected) => {
+    harness.service.storeContent.mockResolvedValue(storeResult);
+
+    const outcome = await call(harness, 'store_content', {
+      content: 'x',
+      contentType: supplied,
+    });
+
+    expect(outcome.isError, outcome.text).toBeFalsy();
+    expect(harness.service.storeContent).toHaveBeenCalledWith(
+      expect.objectContaining({ contentType: expected }),
+      expect.anything(),
+    );
+  });
+
   it('rejects a metadata key starting with $ without calling the service', async () => {
     const outcome = await call(harness, 'store_content', {
       content: 'x',
@@ -662,7 +704,7 @@ describe('service failures', () => {
     expectNoStackTrace(outcome.text);
   });
 
-  it('never echoes the Mongo URI or the embedding API key back to the client', async () => {
+  it('never echoes the MongoDB URI or the embedding API key back to the client', async () => {
     harness.service.searchKnowledge.mockRejectedValue(
       new StorageError(`connection to ${MONGO_URI} failed while using key ${VOYAGE_KEY}`),
     );
