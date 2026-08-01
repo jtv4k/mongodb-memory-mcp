@@ -4,6 +4,11 @@
   "private": true,
   "description": "MCP server that gives AI agents persistent, searchable memory backed by MongoDB — structure-aware chunking, contextual embeddings, and hybrid search over MCP, REST and a server-rendered web UI.",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jtv4k/mongodb-memory-mcp.git"
+  },
+  "homepage": "https://github.com/jtv4k/mongodb-memory-mcp#readme",
   "type": "module",
   "engines": {
     "node": ">=24.18.0 <25",
