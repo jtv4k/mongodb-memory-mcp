@@ -1,7 +1,7 @@
 /**
  * `npm run db:indexes` — apply every index definition to the target database.
  *
- * This is the migration entrypoint the spec demands: index definitions are code,
+ * This is the migration entrypoint: index definitions are code,
  * and this script is how they reach a server. It is the same command for Atlas
  * Local, CI and cloud Atlas — only MONGODB_URI differs — so nobody ever has to
  * click an index together in the Atlas UI and hope it matches.

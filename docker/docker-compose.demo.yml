@@ -107,7 +107,7 @@ services:
     environment:
       # Required. `:?` makes compose fail loudly with this message rather than
       # starting a UI with no models in it.
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:?set OLLAMA_BASE_URL to your Ollama server, e.g. http://ollama.example.com:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:?set OLLAMA_BASE_URL to your Ollama server, e.g. http://192.168.1.50:11434}
       # No sign-in. This is a demo: one fewer step between `up` and a working
       # chat.
       #

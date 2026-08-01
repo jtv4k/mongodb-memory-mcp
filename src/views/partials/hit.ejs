@@ -6,11 +6,11 @@
   SECURITY — read before editing.
 
   `hit.fragmentsHtml` is the ONLY value on this page printed with the raw
-  output tag, and it is markup on purpose: it carries the mark elements
-  wrapped around the matched query terms.
-  It is produced exclusively by `renderFragmentsHtml` in services/highlight.ts,
-  which HTML-escapes every character of the chunk and then writes the tags
-  itself, so nothing from an ingested document can become an element here.
+  output tag, and it is markup on purpose: it carries the mark elements wrapped
+  around the matched query terms. It is produced exclusively by
+  `renderFragmentsHtml` in services/highlight.ts, which HTML-escapes every
+  character of the chunk and then writes the tags itself, so nothing from an
+  ingested document can become an element here.
 
   Do not build highlight markup in this template, do not concatenate anything
   into that string, and do not switch any other value below to the raw tag.

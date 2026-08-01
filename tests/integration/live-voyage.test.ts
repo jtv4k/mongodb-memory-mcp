@@ -14,7 +14,7 @@
  *
  * What it proves that the fake cannot: that `voyage-context-3` really accepts
  * chunks grouped by parent document, that the vectors come back at exactly
- * `EMBEDDING_DIMENSIONS` — the number the Atlas vector index was built with — and
+ * `EMBEDDING_DIMENSIONS` — the number the vector index was built with — and
  * that a query embedded with `input_type=query` retrieves the right section
  * through the same `$vectorSearch` pipeline the product uses.
  */

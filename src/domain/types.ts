@@ -1,7 +1,7 @@
 /**
  * Domain + persistence types.
  *
- * Data-model note (spec requirement): chunks live in their OWN collection and
+ * Data-model note: chunks live in their OWN collection and
  * reference their parent via `documentId`. They are deliberately NOT an array
  * inside the parent document — a document can produce thousands of chunks, and
  * an unbounded array would blow the 16MB document limit and make vector

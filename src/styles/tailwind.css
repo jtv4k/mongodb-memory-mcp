@@ -25,7 +25,7 @@
   /*
    * System font stacks only. A webfont would need a `font-src` entry in the
    * Content-Security-Policy set by `http/web.ts` and a network round trip on
-   * first paint, and neither buys anything on an internal tool.
+   * first paint, and neither buys anything here.
    */
   --font-sans:
     ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,

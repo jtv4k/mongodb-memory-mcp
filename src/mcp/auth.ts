@@ -70,7 +70,7 @@ const JSONRPC_TOO_MANY_REQUESTS = -32002;
  * client that fixes its token is not left serving out a penalty.
  *
  * NOTE: this is keyed on `req.ip`, which is only as trustworthy as the
- * `trust proxy` setting. That is why `TRUST_PROXY` no longer accepts a bare
+ * `trust proxy` setting. That is why `TRUST_PROXY` does not accept a bare
  * `true` in production — see `config/env.ts`.
  */
 const FAILURE_WINDOW_MS = 60_000;

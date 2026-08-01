@@ -29,8 +29,8 @@ import { logAppError, requestLogger, type Logger } from '../../logger.js';
 import { redactSecrets } from '../../redact.js';
 import type { KnowledgeService, RequestContext } from '../../services/types.js';
 
-// Re-exported so the tool modules and their tests keep one import site, even
-// though the implementation is now shared with the HTTP error handler.
+// Re-exported so the tool modules and their tests keep one import site; the
+// implementation in `redact.ts` is shared with the HTTP error handler.
 export { redactSecrets };
 
 /** Everything a tool module needs. Identical for all four tools by design. */

@@ -31,7 +31,7 @@ export default defineConfig({
           include: ['tests/integration/**/*.test.ts'],
           environment: 'node',
           setupFiles: ['tests/integration/setup.ts'],
-          // Creating an Atlas Search index and waiting for it to become
+          // Creating a MongoDB Search index and waiting for it to become
           // queryable is slow — minutes, not seconds, on a cold container.
           testTimeout: 180_000,
           hookTimeout: 300_000,

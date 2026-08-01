@@ -13,8 +13,7 @@ export default tseslint.config(
       '.npm-cache/**',
       '.container-home/**',
       'src/public/css/app.css',
-      // Workflow scripts run in a sandbox that injects agent()/parallel()/phase()/log()
-      // as globals, so every call reads as no-undef here. They are not app code.
+      // Claude Code project files (skills, local scripts) — not app code.
       '.claude/**',
     ],
   },

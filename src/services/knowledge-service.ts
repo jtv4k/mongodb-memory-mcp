@@ -447,7 +447,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
             cause: error,
             details: { sourceId, contentType: input.contentType },
           });
-      // Logged here, distinctly from a validation failure, per the spec.
+      // Logged here so an ingest fault stays distinguishable from bad input.
       logAppError(logger, appError, 'chunking failed', { sourceId });
       throw appError;
     }

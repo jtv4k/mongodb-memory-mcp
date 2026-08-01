@@ -14,8 +14,6 @@ export const COLLECTIONS = {
   chunks: 'chunks',
 } as const;
 
-export type CollectionName = (typeof COLLECTIONS)[keyof typeof COLLECTIONS];
-
 export function documentsCollection(db: Db): Collection<DocumentDoc> {
   return db.collection<DocumentDoc>(COLLECTIONS.documents);
 }

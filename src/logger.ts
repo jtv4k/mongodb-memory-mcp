@@ -1,7 +1,7 @@
 /**
  * Structured logging (pino).
  *
- * Two rules the spec calls out explicitly and this module enforces:
+ * Two rules this module enforces:
  *  1. Embedding/chunking failures are logged *distinctly* from validation
  *     failures — see {@link logAppError}, which maps `AppError.kind` to a
  *     stable `event` name and an appropriate level.

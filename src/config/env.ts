@@ -52,7 +52,7 @@ const csvFromEnv = (defaultValue: readonly string[] = []) =>
 /**
  * `TRUST_PROXY` — how Express should read `X-Forwarded-For`.
  *
- * This was a plain boolean, and `true` is the footgun in Express's API: it
+ * A bare `true` is the footgun in Express's API: it
  * trusts the *entire* forwarded chain, so `req.ip` becomes whatever the client
  * put in the header. `req.ip` is what the auth-rejection log records and what
  * the failed-attempt throttle in `mcp/auth.ts` is keyed on, so a spoofable

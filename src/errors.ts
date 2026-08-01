@@ -3,8 +3,8 @@
  *
  * The `kind` discriminant exists so the log pipeline can tell an *ingestion*
  * problem (embedding / chunking / storage) apart from a *validation* problem
- * (bad input from an AI client) — a hard requirement from the spec, because the
- * two have completely different owners and remediation.
+ * (bad input from an AI client) — the two have completely different owners and
+ * remediation.
  */
 
 export type ErrorKind =
@@ -127,7 +127,7 @@ export class SearchError extends AppError {
   }
 }
 
-/** An MongoDB Search / Vector Search index is missing, stale or not queryable. */
+/** A MongoDB Search or Vector Search index is missing, stale or not queryable. */
 export class IndexError extends AppError {
   constructor(message: string, opts: AppErrorOptions = {}) {
     super(message, { ...opts, kind: 'index', code: 'E_INDEX', httpStatus: 503 });
