@@ -1,0 +1,170 @@
+# Demo override: Open WebUI as an AI client for this knowledge base.
+#
+# It is an override and is NOT usable alone. Pass all three files, in order:
+#
+#   docker compose --env-file .env \
+#     -f docker/docker-compose.yml \
+#     -f docker/docker-compose.dev.yml \
+#     -f docker/docker-compose.demo.yml up
+#
+# WHY THERE IS A PROXY IN HERE. Open WebUI does not speak MCP. It calls
+# "tool servers", which are plain OpenAPI/REST services. Our server speaks MCP
+# Streamable HTTP at /mcp. `mcpo` is the Open WebUI project's own bridge: it
+# opens one MCP session to /mcp, reads the tool list, and re-publishes each tool
+# as an OpenAPI operation. So the chain is:
+#
+#   Open WebUI  --OpenAPI-->  mcpo  --MCP/streamable-http-->  app  -->  Atlas Local
+#                                                              |
+#   Ollama (remote, yours) <--- inference ---------------------+ (no, see below)
+#
+# Ollama is NOT in this file. It is remote and yours; Open WebUI talks to it
+# directly over OLLAMA_BASE_URL. Nothing else in the stack calls it.
+#
+# VARIABLES THIS FILE READS (none of them reach src/config/env.ts — they are
+# compose-only, for third-party images):
+#
+#   OLLAMA_BASE_URL   required. Your Ollama server, e.g. http://192.168.1.50:11434
+#                     Must be reachable FROM THE OPEN WEBUI CONTAINER. See the
+#                     note on host.docker.internal in docker/open-webui/README.md.
+#   MCPO_API_KEY      optional. The key Open WebUI presents to mcpo.
+#   OPEN_WEBUI_PORT   optional, default 8080. NOT 3000 — the app owns 3000.
+
+services:
+  # ---------------------------------------------------------------------------
+  # MCP -> OpenAPI bridge. Holds no state; restart it freely.
+  # ---------------------------------------------------------------------------
+  mcpo:
+    image: ghcr.io/open-webui/mcpo:main
+    container_name: ragkb-mcpo
+    hostname: ragkb-mcpo
+    restart: unless-stopped
+    init: true
+
+    depends_on:
+      app:
+        condition: service_started
+
+    # WHY A GENERATED CONFIG FILE INSTEAD OF `--header` ON THE COMMAND LINE.
+    # Compose interpolates ${...} while parsing, so a token written into
+    # `command:` is baked into the container's stored config and shows up in the
+    # container's process arguments — readable by anyone who can run
+    # `docker inspect` or `ps` on this host. mcpo reads the same header from a
+    # `--config` file instead, so the shell below writes that file into a tmpfs
+    # (memory only, never the image layer, never the repository) from values
+    # that arrive as environment variables.
+    #
+    # `$$VAR` escapes compose's interpolation so the *container's* shell expands
+    # it at runtime. `$VAR` would be substituted by compose and defeat the point.
+    #
+    # The bearer token must match what the app validates. Under dev that is the
+    # compose default unless you passed --env-file .env — the precedence trap in
+    # the README, and why a wrong value shows up as 401s in the app log rather
+    # than as an mcpo error.
+    environment:
+      - MCP_TARGET_URL=http://app:${PORT:-3000}${MCP_PATH:-/mcp}
+      - MCP_AUTH_TOKEN=${MCP_AUTH_TOKEN:-dev-local-token-not-a-secret}
+      - MCPO_API_KEY=${MCPO_API_KEY:-demo-mcpo-key}
+      - MCPO_SERVER_ID=${MCPO_SERVER_ID:-ragkb}
+
+    tmpfs:
+      - /run/mcpo
+
+    entrypoint: ['/bin/sh', '-c']
+    command:
+      - |
+        set -eu
+        cat > /run/mcpo/config.json <<EOF
+        {"mcpServers":{"$${MCPO_SERVER_ID}":{"type":"streamable-http","url":"$${MCP_TARGET_URL}","headers":{"Authorization":"Bearer $${MCP_AUTH_TOKEN}"}}}}
+        EOF
+        exec mcpo --host 0.0.0.0 --port 8000 --api-key "$${MCPO_API_KEY}" --config /run/mcpo/config.json
+
+    # Published so you can read the generated spec from the host while
+    # debugging. NOTE the prefix: --config namespaces every tool under the
+    # server id, so the spec is at /ragkb/openapi.json, not /openapi.json.
+    ports:
+      - '${MCPO_PORT:-8000}:8000'
+
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  # ---------------------------------------------------------------------------
+  # Open WebUI. Chat front end; talks to your remote Ollama for inference and to
+  # mcpo for tools.
+  # ---------------------------------------------------------------------------
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: ragkb-open-webui
+    hostname: ragkb-open-webui
+    restart: unless-stopped
+
+    depends_on:
+      mcpo:
+        condition: service_started
+
+    environment:
+      # Required. `:?` makes compose fail loudly with this message rather than
+      # starting a UI with no models in it.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:?set OLLAMA_BASE_URL to your Ollama server, e.g. http://192.168.1.50:11434}
+
+    # Container listens on 8080. The documented host mapping upstream is 3000,
+    # which this project's app already owns, hence the different default.
+    ports:
+      - '${OPEN_WEBUI_PORT:-8080}:8080'
+
+    # Named volume, not a bind mount: this image runs as root and would leave
+    # root-owned files in the repository. Accounts, chats and tool-server
+    # registrations live here, so removing it resets the demo.
+    volumes:
+      - open_webui_data:/app/backend/data
+
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  # ---------------------------------------------------------------------------
+  # One-shot seeder. Registers the tool server in Open WebUI's database so the
+  # stack comes up already configured, then exits.
+  #
+  # It exists because Open WebUI has no environment variable for tool-server
+  # connections — they live in its database behind an admin-authenticated REST
+  # route, so the only way to preconfigure them is to call that route once.
+  #
+  # Plain Node ESM with no dependencies, run on the pinned node image — the same
+  # shape as scripts/copy-assets.mjs, and the same image scripts/ndocker.sh uses.
+  # ---------------------------------------------------------------------------
+  owui-seed:
+    image: node:24-slim
+    container_name: ragkb-owui-seed
+    depends_on:
+      open-webui:
+        condition: service_healthy
+      mcpo:
+        condition: service_started
+    restart: 'no'
+
+    environment:
+      - OWUI_URL=http://open-webui:8080
+      - OWUI_ADMIN_EMAIL=${OWUI_ADMIN_EMAIL:-admin@example.com}
+      - OWUI_ADMIN_PASSWORD=${OWUI_ADMIN_PASSWORD:-please-change-me}
+      - OWUI_ADMIN_NAME=${OWUI_ADMIN_NAME:-Demo Admin}
+      - MCPO_URL=http://mcpo:8000/${MCPO_SERVER_ID:-ragkb}
+      - MCPO_API_KEY=${MCPO_API_KEY:-demo-mcpo-key}
+      - MCPO_SERVER_ID=${MCPO_SERVER_ID:-ragkb}
+      # Optional. Set it to a pulled Ollama model (e.g. qwen3:latest) and the
+      # seeder also creates a model preset with Native function calling and the
+      # knowledge-base system prompt already applied.
+      - OWUI_BASE_MODEL=${OWUI_BASE_MODEL:-}
+      - OWUI_MODEL_ID=${OWUI_MODEL_ID:-mongodb-kb}
+
+    volumes:
+      - ../scripts/seed-open-webui.mjs:/seed.mjs:ro
+
+    entrypoint: ['node', '/seed.mjs']
+
+volumes:
+  open_webui_data:
