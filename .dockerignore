@@ -13,6 +13,7 @@ coverage
 .git
 .github
 .husky
+.claude
 *.tsbuildinfo
 .env
 .env.*

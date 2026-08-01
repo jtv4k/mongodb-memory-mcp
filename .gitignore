@@ -34,9 +34,11 @@ coverage/
 *.log
 npm-debug.log*
 
-# Per-developer Claude Code settings (tool permissions etc.). The shared
-# skills and workflows under .claude/ ARE committed; this file is not.
+# Per-developer Claude Code settings (tool permissions etc.) and scratch
+# worktrees. The shared skills and workflows under .claude/ ARE committed;
+# these are not.
 .claude/settings.local.json
+.claude/worktrees/
 
 # editor / OS
 .DS_Store
