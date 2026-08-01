@@ -2,22 +2,40 @@
   "$comment": [
     "Atlas Search (full-text) index for the `documents` collection.",
     "",
-    "Used by the browse/list view and by `list_sources` substring search so those",
-    "queries do not degrade into unindexed regex collection scans as the KB grows.",
+    "Serves browse substring search: the `search` parameter on `list_sources`,",
+    "`/api/sources`, `/api/documents` and the `/documents` page. The custom",
+    "keywordLowercase analyzer indexes each field's whole value as a single",
+    "lowercased term, so a `wildcard` query delivers the case-insensitive",
+    "substring semantics the API promises while staying on the index — a",
+    "case-insensitive $regex can never use one. The `token` mapping on `title`",
+    "and the date/number fields exist for the $search `sort` option.",
     "Applied as code by `npm run db:indexes` — see chunks.vector.json."
+  ],
+  "analyzers": [
+    {
+      "name": "keywordLowercase",
+      "tokenizer": { "type": "keyword" },
+      "tokenFilters": [{ "type": "lowercase" }]
+    }
   ],
   "mappings": {
     "dynamic": false,
     "fields": {
       "title": [
-        { "type": "string", "analyzer": "lucene.standard" },
+        { "type": "string", "analyzer": "keywordLowercase" },
         { "type": "token", "normalizer": "lowercase" }
       ],
-      "content": [{ "type": "string", "analyzer": "lucene.standard" }],
-      "sourceId": [{ "type": "token", "normalizer": "lowercase" }],
-      "uri": [{ "type": "string", "analyzer": "lucene.keyword" }],
+      "sourceId": [{ "type": "string", "analyzer": "keywordLowercase" }],
+      "uri": [{ "type": "string", "analyzer": "keywordLowercase" }],
       "tags": [{ "type": "token", "normalizer": "lowercase" }],
-      "contentType": [{ "type": "token", "normalizer": "lowercase" }]
+      "createdAt": [{ "type": "date" }],
+      "updatedAt": [{ "type": "date" }],
+      "chunking": {
+        "type": "document",
+        "fields": {
+          "chunkCount": [{ "type": "number" }]
+        }
+      }
     }
   }
 }

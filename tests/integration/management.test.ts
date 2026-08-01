@@ -9,10 +9,12 @@
  * delete case therefore checks the chunk count is zero, and the file ends with a
  * whole-database orphan sweep.
  *
- * Search indexes are created but not waited on: nothing here goes through
- * `$search` or `$vectorSearch`, and the standard b-tree indexes — in particular
- * the unique `sourceId` index that makes re-ingest version rather than
- * duplicate — are what these paths depend on.
+ * Search indexes are created but not waited on up front: most paths here ride
+ * the standard b-tree indexes — in particular the unique `sourceId` index that
+ * makes re-ingest version rather than duplicate. The one exception is browse
+ * substring search, which runs through the documents Atlas Search index; those
+ * assertions poll for their own visibility instead of stalling every test
+ * behind an index build.
  */
 import { ObjectId } from 'mongodb';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -155,12 +157,39 @@ describe('listSources', () => {
     const byUpperTag = await sources({ tag: 'RUNBOOK' });
     expect(byUpperTag.total).toBe(2);
 
+    // Substring search runs through the documents Atlas Search index, which
+    // builds asynchronously and indexes writes eventually — so poll until every
+    // seeded document is visible before asserting. The helper swallows the
+    // IndexError the service raises while the index is still building.
+    const searchTotal = async (search: string): Promise<number> => {
+      try {
+        return (await sources({ search })).total;
+      } catch {
+        return -1;
+      }
+    };
+    await h.waitFor(
+      'substring search served by the documents text index',
+      async () =>
+        (await searchTotal('runbook')) === 2 &&
+        (await searchTotal('Atlas Operations')) === 1 &&
+        (await searchTotal('archive')) === 1,
+    );
+
     const bySubstring = await sources({ search: 'runbook' });
     expect(bySubstring.total).toBe(2);
+    expect(bySubstring.sources.map((entry) => entry.sourceId).sort()).toEqual(
+      [DEPLOYMENT_RUNBOOK.sourceId, INCIDENT_RUNBOOK.sourceId].sort(),
+    );
 
     const byTitleFragment = await sources({ search: 'Atlas Operations' });
     expect(byTitleFragment.total).toBe(1);
     expect(byTitleFragment.sources[0]?.sourceId).toBe(ATLAS_GUIDE.sourceId);
+
+    // Search and tag together exercise the compound-with-filter query shape.
+    const searchAndTag = await sources({ search: 'runbook', tag: 'deploy' });
+    expect(searchAndTag.total).toBe(1);
+    expect(searchAndTag.sources[0]?.sourceId).toBe(DEPLOYMENT_RUNBOOK.sourceId);
 
     const noMatch = await sources({ search: 'quantum tunnelling' });
     expect(noMatch.total).toBe(0);
@@ -232,6 +261,12 @@ describe('getDocument and listDocuments', () => {
 
     const filtered = await browse({ tag: 'code' });
     expect(filtered.total).toBe(2);
+
+    // Already indexed: the listSources test above polled this document into
+    // visibility, and both listings share the documents text index.
+    const searched = await browse({ search: 'archive' });
+    expect(searched.total).toBe(1);
+    expect(searched.documents[0]?.sourceId).toBe(ARCHIVE_SNIPPET.sourceId);
   });
 });
 
