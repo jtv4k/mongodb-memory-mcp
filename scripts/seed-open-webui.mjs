@@ -28,6 +28,7 @@ const TOOL_ID = process.env['MCPO_SERVER_ID'] ?? 'ragkb';
 
 const BASE_MODEL = (process.env['OWUI_BASE_MODEL'] ?? '').trim();
 const MODEL_ID = (process.env['OWUI_MODEL_ID'] ?? 'mongodb-kb').trim();
+const OLLAMA_URL = (process.env['OLLAMA_BASE_URL'] ?? '').trim();
 
 const SYSTEM_PROMPT = [
   'You have a persistent knowledge base backed by MongoDB Atlas Vector Search. It outlives',
@@ -76,31 +77,56 @@ async function call(path, { body, token, method } = {}) {
   return { status: response.status, body: parsed };
 }
 
-/** Open WebUI runs migrations on first boot, so it answers late rather than never. */
+/**
+ * Wait for Open WebUI and return its config.
+ *
+ * Deliberately polls /api/config rather than /health. The container reports
+ * healthy while the app is still coming up, and during that window /api/config
+ * answers without a `features` block — which reads as "auth is enabled" and
+ * sends us down the signup path on an instance that has auth switched off.
+ * Waiting for the field we actually branch on removes the race.
+ */
 async function waitForOpenWebUi(attempts = 60, delayMs = 3000) {
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const response = await fetch(`${BASE}/health`);
+      const response = await fetch(`${BASE}/api/config`);
       if (response.ok) {
-        console.log(`  Open WebUI is up (after ${attempt} attempt(s))`);
-        return true;
+        const config = await response.json();
+        if (config?.features) {
+          console.log(`  Open WebUI is up (after ${attempt} attempt(s))`);
+          return config;
+        }
       }
     } catch {
       // Not listening yet. Keep waiting; the caller reports the timeout.
     }
     await new Promise((resolve) => setTimeout(resolve, delayMs));
   }
-  return false;
+  return null;
 }
 
-/** Sign up the first admin, or sign in when the instance is already seeded. */
-async function authenticate() {
-  const signup = await call('/api/v1/auths/signup', {
-    body: { name: NAME, email: EMAIL, password: PASSWORD },
-  });
-  if (signup.status === 200 && signup.body.token) {
-    console.log(`  created admin account ${EMAIL}`);
-    return signup.body.token;
+/**
+ * Sign up the first admin, or sign in when the instance is already seeded.
+ *
+ * When sign-in is disabled we must NOT sign up. Open WebUI's no-auth path signs
+ * in as a built-in `admin@localhost` and creates it on demand, but only while
+ * the database has no other users — otherwise it refuses to start with auth off
+ * ("You can't turn off authentication because there are existing users").
+ * Signing up here would create exactly such a user and break the *next* boot of
+ * the very stack we just configured. Signing in instead makes Open WebUI create
+ * its own account, which it is happy to see on subsequent starts.
+ */
+async function authenticate(authDisabled) {
+  if (authDisabled) {
+    console.log('  sign-in is disabled — using the built-in admin');
+  } else {
+    const signup = await call('/api/v1/auths/signup', {
+      body: { name: NAME, email: EMAIL, password: PASSWORD },
+    });
+    if (signup.status === 200 && signup.body.token) {
+      console.log(`  created admin account ${EMAIL}`);
+      return signup.body.token;
+    }
   }
 
   const signin = await call('/api/v1/auths/signin', {
@@ -115,6 +141,50 @@ async function authenticate() {
   console.error('  If you created an account by hand, set OWUI_ADMIN_EMAIL and');
   console.error('  OWUI_ADMIN_PASSWORD to match it.');
   return null;
+}
+
+/**
+ * Push the Ollama URL into Open WebUI's own configuration.
+ *
+ * OLLAMA_BASE_URL is a PersistentConfig: the environment seeds it on first boot
+ * and Open WebUI then keeps it in its database, where it wins from that point
+ * on. Change the variable afterwards and nothing happens — the container has
+ * the new value, the UI still shows the old one, and the only ways out are
+ * wiping the volume or editing it by hand in admin settings.
+ *
+ * Writing it on every run makes whatever the operator passed to run.sh the
+ * value that actually takes effect.
+ */
+async function seedOllamaUrl(token) {
+  if (OLLAMA_URL.length === 0) {
+    console.log('  OLLAMA_BASE_URL not passed to the seeder — leaving it as configured');
+    return;
+  }
+
+  const current = await call('/ollama/config', { token });
+  const configured = current.body?.OLLAMA_BASE_URLS ?? [];
+  if (configured.length === 1 && configured[0] === OLLAMA_URL) {
+    console.log(`  Ollama URL already ${OLLAMA_URL}`);
+    return;
+  }
+
+  const result = await call('/ollama/config/update', {
+    token,
+    body: {
+      ENABLE_OLLAMA_API: true,
+      OLLAMA_BASE_URLS: [OLLAMA_URL],
+      OLLAMA_API_CONFIGS: {},
+    },
+  });
+
+  if (result.status !== 200) {
+    console.error(`  NOTE: could not set the Ollama URL (${result.status}).`);
+    console.error(`  Set it by hand in Admin Settings → Connections: ${OLLAMA_URL}`);
+    return;
+  }
+  console.log(
+    `  set Ollama URL to ${OLLAMA_URL}${configured.length ? ` (was ${configured[0]})` : ''}`,
+  );
 }
 
 async function seedToolServer(token) {
@@ -167,20 +237,25 @@ async function seedModel(token) {
     return;
   }
 
-  const result = await call('/api/v1/models/create', {
-    token,
-    body: {
-      id: MODEL_ID,
-      name: `MongoDB KB (${BASE_MODEL})`,
-      base_model_id: BASE_MODEL,
-      meta: {
-        description: 'Chats with the MongoDB knowledge base over MCP.',
-        toolIds: [`server:${TOOL_ID}`],
-      },
-      params: { function_calling: 'native', system: SYSTEM_PROMPT },
-      is_active: true,
+  const body = {
+    id: MODEL_ID,
+    name: `MongoDB KB (${BASE_MODEL})`,
+    base_model_id: BASE_MODEL,
+    meta: {
+      description: 'Chats with the MongoDB knowledge base over MCP.',
+      toolIds: [`server:${TOOL_ID}`],
     },
-  });
+    params: { function_calling: 'native', system: SYSTEM_PROMPT },
+    is_active: true,
+  };
+
+  // Delete first so re-running actually updates the preset. `create` refuses a
+  // duplicate id, and it reports that refusal as **401** with the message "this
+  // model id is already registered" — an auth status for a naming conflict,
+  // which reads like a broken token and is not one.
+  await call('/api/v1/models/model/delete', { token, body: { id: MODEL_ID } });
+
+  const result = await call('/api/v1/models/create', { token, body });
 
   if (result.status !== 200) {
     console.error(`  NOTE: model preset not created (${result.status}). Not fatal —`);
@@ -193,13 +268,15 @@ async function seedModel(token) {
 async function main() {
   console.log(`Seeding Open WebUI at ${BASE}`);
 
-  if (!(await waitForOpenWebUi())) {
+  const config = await waitForOpenWebUi();
+  if (!config) {
     console.error('  ERROR: Open WebUI never became reachable');
     return 1;
   }
 
-  const token = await authenticate();
+  const token = await authenticate(config.features?.auth === false);
   if (!token) return 1;
+  await seedOllamaUrl(token);
   if (!(await seedToolServer(token))) return 1;
   await seedModel(token);
 

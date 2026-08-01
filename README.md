@@ -217,6 +217,26 @@ curl -sS -o /dev/null -w '%{http_code}\n' -X POST "$BASE/mcp"       # 401
 
 ---
 
+## Try it with a chat UI
+
+There is a demo stack: Open WebUI, pointed at an Ollama server of your own, with
+the four tools already connected. One script asks for what it needs and starts
+everything.
+
+```bash
+./docker/open-webui/run.sh
+```
+
+Two things it cannot do for you. You need an Ollama server reachable **from a
+container** — `localhost` there means the container, not your machine. And you
+need a model that can actually call tools; `qwen3` and `llama3.1` can, and one
+that cannot will answer from its own weights and quietly never touch the
+knowledge base.
+
+Setup details and troubleshooting live in `docker/open-webui/README.md`.
+
+---
+
 ## Development
 
 All Node tooling runs in a container. Run these from the project root.

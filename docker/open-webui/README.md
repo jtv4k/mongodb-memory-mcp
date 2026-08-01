@@ -8,40 +8,60 @@ because Open WebUI calls OpenAPI tool servers and our server speaks MCP.
 
 ## Run it
 
-Three things in `.env`, then one command:
-
 ```bash
-OLLAMA_BASE_URL=http://192.168.1.50:11434    # required
-OWUI_ADMIN_EMAIL=you@example.com
-OWUI_ADMIN_PASSWORD=something-you-choose
-OWUI_BASE_MODEL=qwen3:latest                 # optional, see below
+./docker/open-webui/run.sh
 ```
 
+It asks for your Ollama URL, optionally a model to build a preset around, then
+starts everything. Say yes when it offers to apply the search indexes — on a
+clean database, search returns nothing until you do.
+
+Then open <http://localhost:8080>, and in the sidebar open **Workspace** and pick
+**MongoDB KB**. There is no sign-in, and the knowledge-base tools are already
+attached to that model.
+
+Re-run the script whenever your Ollama URL or model changes. It rewrites both
+through Open WebUI's admin API, so nothing needs resetting.
+
+**Ran this stack before?** Open WebUI only accepts a disabled sign-in on a fresh
+database — otherwise it answers "You can't turn off authentication because there
+are existing users." Drop the volume and bring it back up; the seeder
+re-registers the tools:
+
 ```bash
-docker compose --env-file .env \
-  -f docker/docker-compose.yml \
-  -f docker/docker-compose.dev.yml \
-  -f docker/docker-compose.demo.yml up
+docker volume rm ragkb_open_webui_data
 ```
 
-All three `-f` flags. The dev and demo files are overrides and do nothing alone.
-
-On a clean database, apply the indexes once — search returns nothing until you
-do:
-
-```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
-  -f docker/docker-compose.demo.yml run --rm app npm run db:indexes
-```
-
-Then open <http://localhost:8080>, sign in with the credentials above, and pick
-the model. The knowledge-base tools are already connected.
+That missing sign-in is deliberate — one fewer step to a working chat — but know
+what it exposes. The port publishes on every interface, and the tools are not
+scoped to a user, so anyone who can reach 8080 can read the whole knowledge base
+through `search_knowledge`. Fine on a laptop. Not fine on a shared network. To
+lock it down, set `WEBUI_AUTH` back to `true` in `docker-compose.demo.yml`, or
+bind the port to `127.0.0.1`.
 
 | Service    | URL                     |
 | ---------- | ----------------------- |
 | Chat UI    | <http://localhost:8080> |
 | App + REST | <http://localhost:3000> |
 | Bridge     | <http://localhost:8000> |
+
+### Driving compose yourself
+
+Put the values in `.env` and pass all three `-f` flags — the dev and demo files
+are overrides and do nothing alone:
+
+```bash
+OLLAMA_BASE_URL=http://192.168.1.50:11434    # required
+OWUI_BASE_MODEL=qwen3:latest                 # optional, see below
+
+docker compose --env-file .env \
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.dev.yml \
+  -f docker/docker-compose.demo.yml up
+
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+  -f docker/docker-compose.demo.yml run --rm app npm run db:indexes
+```
 
 ## Your Ollama URL
 
