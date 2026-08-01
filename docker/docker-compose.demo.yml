@@ -107,7 +107,26 @@ services:
     environment:
       # Required. `:?` makes compose fail loudly with this message rather than
       # starting a UI with no models in it.
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:?set OLLAMA_BASE_URL to your Ollama server, e.g. http://192.168.1.50:11434}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:?set OLLAMA_BASE_URL to your Ollama server, e.g. http://ollama.example.com:11434}
+      # No sign-in. This is a demo: one fewer step between `up` and a working
+      # chat.
+      #
+      # ONLY TAKES EFFECT ON A FRESH DATABASE. Open WebUI refuses to disable
+      # auth when accounts already exist — "You can't turn off authentication
+      # because there are existing users." If you ran this stack before with
+      # sign-in enabled, drop the volume:
+      #
+      #   docker volume rm ragkb_open_webui_data
+      #
+      # The seeder still works with auth off, because Open WebUI then accepts
+      # any sign-in and returns a token for its auto-created admin.
+      #
+      # Understand what this exposes. The port below publishes on every
+      # interface, and the tools behind the UI are not scoped to a user, so
+      # anyone who can reach 8080 can read the whole knowledge base through
+      # search_knowledge. Fine on a laptop. Not fine on a shared network — set
+      # this to `true`, or bind the port to 127.0.0.1.
+      - WEBUI_AUTH=false
 
     # Container listens on 8080. The documented host mapping upstream is 3000,
     # which this project's app already owns, hence the different default.
@@ -149,6 +168,11 @@ services:
 
     environment:
       - OWUI_URL=http://open-webui:8080
+      # Open WebUI treats OLLAMA_BASE_URL as a PersistentConfig: the environment
+      # seeds it once, then its database wins and later changes to the variable
+      # are ignored. The seeder writes it through the admin API on every run so
+      # the value passed to run.sh is the one that actually applies.
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
       - OWUI_ADMIN_EMAIL=${OWUI_ADMIN_EMAIL:-admin@example.com}
       - OWUI_ADMIN_PASSWORD=${OWUI_ADMIN_PASSWORD:-please-change-me}
       - OWUI_ADMIN_NAME=${OWUI_ADMIN_NAME:-Demo Admin}
