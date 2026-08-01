@@ -20,6 +20,7 @@ import type { Logger } from '../logger.js';
 import type { KnowledgeService } from '../services/types.js';
 import { registerDeleteContentTool } from './tools/delete-content.js';
 import { registerListSourcesTool } from './tools/list-sources.js';
+import { installInputRejectionHandler } from './tools/rejections.js';
 import { registerSearchKnowledgeTool } from './tools/search-knowledge.js';
 import { registerStoreContentTool } from './tools/store-content.js';
 import type { ToolDeps } from './tools/shared.js';
@@ -72,6 +73,9 @@ export function createMcpServer(deps: McpServerDeps): McpServer {
   registerSearchKnowledgeTool(server, toolDeps);
   registerListSourcesTool(server, toolDeps);
   registerDeleteContentTool(server, toolDeps);
+
+  // After the tools, because it wraps the handler their registration installed.
+  installInputRejectionHandler(server, toolDeps);
 
   return server;
 }

@@ -26,11 +26,70 @@ export const MAX_METADATA_JSON_CHARS = 32_768;
 
 const PROTO_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-const contentTypeSchema = z.enum(CONTENT_TYPES);
+/**
+ * MIME types and abbreviations an AI client plausibly sends for `contentType`.
+ *
+ * The field is named like a Content-Type header, so models supply header values
+ * for it — `text/markdown` was rejected in the wild. The intent there is not
+ * ambiguous, and refusing it costs the caller a whole failed tool call whose
+ * only feedback is a schema error. Map the near-misses; leave anything genuinely
+ * unknown to fail against the enum, which names the accepted values.
+ */
+const CONTENT_TYPE_ALIASES: Readonly<Record<string, (typeof CONTENT_TYPES)[number]>> = {
+  md: 'markdown',
+  mkd: 'markdown',
+  markdown: 'markdown',
+  'text/markdown': 'markdown',
+  txt: 'text',
+  plain: 'text',
+  plaintext: 'text',
+  'text/plain': 'text',
+  htm: 'html',
+  'text/html': 'html',
+  'application/json': 'json',
+  'text/json': 'json',
+  source: 'code',
+  sourcecode: 'code',
+  javascript: 'code',
+  typescript: 'code',
+  python: 'code',
+  shell: 'code',
+  sh: 'code',
+  sql: 'code',
+};
+
+/**
+ * Fold a Content-Type-ish string onto one of CONTENT_TYPES, or pass it through
+ * untouched so the enum produces the error naming what is allowed.
+ */
+function normalizeContentType(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+
+  // Drop any parameters: `text/markdown; charset=utf-8`.
+  const bare = (value.split(';', 1)[0] ?? '').trim().toLowerCase();
+  if (bare.length === 0) return value;
+
+  const direct = CONTENT_TYPE_ALIASES[bare];
+  if (direct !== undefined) return direct;
+
+  // Unrecognised MIME type: try the subtype alone, minus any `x-` prefix, so
+  // `text/x-markdown` and `application/x-sh` resolve the same way.
+  const slash = bare.lastIndexOf('/');
+  if (slash !== -1) {
+    const subtype = bare.slice(slash + 1).replace(/^x-/, '');
+    const viaSubtype = CONTENT_TYPE_ALIASES[subtype];
+    if (viaSubtype !== undefined) return viaSubtype;
+    if ((CONTENT_TYPES as readonly string[]).includes(subtype)) return subtype;
+  }
+
+  return value;
+}
+
+const contentTypeSchema = z.preprocess(normalizeContentType, z.enum(CONTENT_TYPES));
 
 /**
  * A caller-supplied identifier. Deliberately narrow: this value ends up in
- * Mongo queries, index filters and URLs.
+ * MongoDB queries, index filters and URLs.
  */
 const sourceIdSchema = z
   .string()
@@ -166,7 +225,9 @@ export const storeContentShape = {
   uri: uriSchema.describe('Origin of the content: URL, file path, ticket reference, etc.'),
   contentType: contentTypeSchema
     .default('markdown')
-    .describe('Drives which structure-aware chunking strategy runs.'),
+    .describe(
+      'One of: markdown, text, code, html, json. Drives which structure-aware chunking strategy runs. Common MIME types are accepted too ("text/markdown" becomes "markdown").',
+    ),
   tags: tagsSchema.describe('Lowercased, deduplicated labels used to filter searches.'),
   metadata: metadataSchema.describe('Arbitrary JSON metadata stored alongside the document.'),
   agent: z
