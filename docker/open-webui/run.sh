@@ -22,17 +22,47 @@ ask() {
 echo "Open WebUI demo. Press enter to accept a default."
 echo
 
-# The only genuinely required value. It is resolved inside the Open WebUI
-# container, so localhost means that container, where nothing is listening.
-while [ -z "${OLLAMA_BASE_URL:-}" ]; do
-  read -r -p "  Ollama URL, reachable from a container (e.g. http://192.168.1.50:11434): " \
-    OLLAMA_BASE_URL
-done
-export OLLAMA_BASE_URL
+# Chat backend: OpenAI-compatible by default, a plain Ollama server as the
+# fallback. ANY endpoint speaking the OpenAI dialect works — api.openai.com,
+# AWS Bedrock, a local Ollama's /v1, vLLM. A key already exported in the
+# environment is kept without re-asking (and without echoing it).
+if [ -z "${OPENAI_API_KEY:-}" ]; then
+  read -r -p "  API key for your OpenAI-compatible endpoint (blank: use .env, or Ollama): " \
+    OPENAI_API_KEY
+fi
+
+# Either URL is resolved inside the Open WebUI container, so for a server on
+# this machine localhost means that container, where nothing is listening —
+# use host.docker.internal (or the host's LAN address) instead.
+if [ -n "${OPENAI_API_KEY:-}" ]; then
+  export OPENAI_API_KEY
+  ask OPENAI_BASE_URL "OpenAI-compatible URL, reachable from a container" \
+    "https://api.openai.com/v1"
+  preset_hint="e.g. gpt-4o-mini"
+else
+  # NEVER export the blank answer: compose gives the shell environment
+  # precedence over --env-file, so an exported-but-empty OPENAI_API_KEY would
+  # shadow a key supplied via .env and the demo would end up with no backend
+  # at all — the exact failure this branch exists to avoid.
+  unset OPENAI_API_KEY
+  if [ -z "${OLLAMA_BASE_URL:-}" ]; then
+    read -r -p "  Ollama URL, reachable from a container (blank if .env sets the backend): " \
+      OLLAMA_BASE_URL
+  fi
+  if [ -n "${OLLAMA_BASE_URL:-}" ]; then
+    export OLLAMA_BASE_URL
+    preset_hint="e.g. qwen3:latest"
+  else
+    # Same shadowing hazard as the key above.
+    unset OLLAMA_BASE_URL
+    echo "  Nothing typed — the chat backend comes from .env (OPENAI_API_KEY or OLLAMA_BASE_URL)."
+    preset_hint="e.g. gpt-4o-mini, or an Ollama tag"
+  fi
+fi
 
 # Optional. With it, the seeder also creates a model preset that has Native
 # function calling and the knowledge-base system prompt already applied.
-ask OWUI_BASE_MODEL "Ollama model for the preset (blank to skip)" ""
+ask OWUI_BASE_MODEL "Chat model for the preset, ${preset_hint} (blank to skip)" ""
 
 compose=(docker compose)
 [ -f .env ] && compose+=(--env-file .env)
@@ -65,7 +95,7 @@ if [ -n "${OWUI_BASE_MODEL:-}" ]; then
   next_step="In the sidebar, open Workspace and pick \"MongoDB KB (${OWUI_BASE_MODEL})\".
 The knowledge-base tools are already attached to it."
 else
-  next_step="No model preset was created, because no Ollama model was given.
+  next_step="No model preset was created, because no chat model was given.
 Pick a model in the chat, then switch its tools on from the message input."
 fi
 

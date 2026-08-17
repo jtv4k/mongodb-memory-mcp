@@ -28,6 +28,8 @@ const TOOL_ID = process.env['MCPO_SERVER_ID'] ?? 'ragkb';
 
 const BASE_MODEL = (process.env['OWUI_BASE_MODEL'] ?? '').trim();
 const MODEL_ID = (process.env['OWUI_MODEL_ID'] ?? 'mongodb-kb').trim();
+const OPENAI_URL = (process.env['OPENAI_BASE_URL'] ?? '').trim().replace(/\/+$/, '');
+const OPENAI_KEY = (process.env['OPENAI_API_KEY'] ?? '').trim();
 const OLLAMA_URL = (process.env['OLLAMA_BASE_URL'] ?? '').trim();
 
 const SYSTEM_PROMPT = [
@@ -147,21 +149,119 @@ async function authenticate(authDisabled) {
 }
 
 /**
- * Push the Ollama URL into Open WebUI's own configuration.
+ * Push the chosen chat backend into Open WebUI's own configuration.
  *
- * OLLAMA_BASE_URL is a PersistentConfig: the environment seeds it on first boot
- * and Open WebUI then keeps it in its database, where it wins from that point
- * on. Change the variable afterwards and nothing happens — the container has
- * the new value, the UI still shows the old one, and the only ways out are
- * wiping the volume or editing it by hand in admin settings.
+ * Both connections are PersistentConfig: the environment seeds them on first
+ * boot and Open WebUI then keeps them in its database, where they win from
+ * that point on. Change the variables afterwards and nothing happens — the
+ * container has the new values, the UI still uses the old ones, and the only
+ * ways out are wiping the volume or editing them by hand in admin settings.
  *
- * Writing it on every run makes whatever the operator passed to run.sh the
- * value that actually takes effect.
+ * Writing them on every run makes whatever the operator passed to run.sh the
+ * values that actually take effect. The OpenAI-compatible connection is the
+ * default; a plain Ollama server is the still-supported fallback, and each
+ * seeder below no-ops when its backend was not given.
  */
+/**
+ * Can the endpoint enumerate its models? Open WebUI populates its model
+ * picker from `GET {base}/models`, but "any OpenAI-compatible URL" includes
+ * gateways (Azure API Management, Bedrock front ends) that route only
+ * `/chat/completions` — there the picker would come up empty with no error
+ * anywhere. This probe is what decides whether to fall back to a pinned
+ * model id below.
+ */
+async function openAiEndpointListsModels() {
+  try {
+    const response = await fetch(`${OPENAI_URL}/models`, {
+      headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) return false;
+    const body = await response.json();
+    return Array.isArray(body?.data) && body.data.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function seedOpenAiConnection(token) {
+  if (OPENAI_URL.length === 0 || OPENAI_KEY.length === 0) {
+    console.log(
+      '  OPENAI_BASE_URL / OPENAI_API_KEY not passed to the seeder — leaving the connection as configured',
+    );
+    return;
+  }
+
+  // When the endpoint cannot list models, pin the preset model on the
+  // connection instead: `model_ids` is Open WebUI's escape hatch that skips
+  // discovery and offers the listed ids directly.
+  const listable = await openAiEndpointListsModels();
+  const apiConfigs =
+    listable || BASE_MODEL.length === 0 ? {} : { 0: { enable: true, model_ids: [BASE_MODEL] } };
+
+  const current = await call('/openai/config', { token });
+  const urls = current.body?.OPENAI_API_BASE_URLS ?? [];
+  const keys = current.body?.OPENAI_API_KEYS ?? [];
+  const sameConfigs =
+    JSON.stringify(current.body?.OPENAI_API_CONFIGS ?? {}) === JSON.stringify(apiConfigs);
+  if (
+    urls.length === 1 &&
+    urls[0] === OPENAI_URL &&
+    keys.length === 1 &&
+    keys[0] === OPENAI_KEY &&
+    sameConfigs
+  ) {
+    console.log(`  OpenAI-compatible endpoint already ${OPENAI_URL}`);
+  } else {
+    const result = await call('/openai/config/update', {
+      token,
+      body: {
+        ENABLE_OPENAI_API: true,
+        OPENAI_API_BASE_URLS: [OPENAI_URL],
+        OPENAI_API_KEYS: [OPENAI_KEY],
+        OPENAI_API_CONFIGS: apiConfigs,
+      },
+    });
+
+    if (result.status !== 200) {
+      console.error(`  NOTE: could not set the OpenAI-compatible endpoint (${result.status}).`);
+      console.error(`  Set it by hand in Admin Settings → Connections: ${OPENAI_URL}`);
+      return;
+    }
+    // The key is deliberately not echoed; the URL alone identifies the change.
+    console.log(
+      `  set the OpenAI-compatible endpoint to ${OPENAI_URL}${urls.length ? ` (was ${urls[0]})` : ''}`,
+    );
+  }
+
+  if (!listable) {
+    if (BASE_MODEL.length > 0) {
+      console.log(`  endpoint does not list models — pinned "${BASE_MODEL}" on the connection`);
+    } else {
+      console.error('  WARNING: the endpoint does not answer GET /models, so NO models will');
+      console.error('  appear in Open WebUI. Re-run run.sh and name a chat model so it can');
+      console.error('  be pinned on the connection.');
+    }
+  }
+}
+
+/** The Ollama fallback, same PersistentConfig reasoning as above. */
 async function seedOllamaUrl(token) {
   if (OLLAMA_URL.length === 0) {
     console.log('  OLLAMA_BASE_URL not passed to the seeder — leaving it as configured');
     return;
+  }
+
+  // An Ollama server that only its owner's LAN can resolve is the classic way
+  // this demo shows an empty model picker with no error anywhere — the URL is
+  // resolved from inside the compose network, not from the operator's shell.
+  try {
+    await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(8_000) });
+  } catch {
+    console.error(`  WARNING: ${OLLAMA_URL} is not reachable from the containers, so its`);
+    console.error('  models will not appear in Open WebUI. If Ollama runs on this host, use');
+    console.error('  host.docker.internal (Docker Desktop) or the host LAN IP, and set');
+    console.error('  OLLAMA_HOST=0.0.0.0 on the Ollama side so it accepts more than loopback.');
   }
 
   const current = await call('/ollama/config', { token });
@@ -279,6 +379,7 @@ async function main() {
 
   const token = await authenticate(config.features?.auth === false);
   if (!token) return 1;
+  await seedOpenAiConnection(token);
   await seedOllamaUrl(token);
   if (!(await seedToolServer(token))) return 1;
   await seedModel(token);

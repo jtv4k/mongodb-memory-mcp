@@ -15,17 +15,25 @@
 #
 #   Open WebUI  --OpenAPI-->  mcpo  --MCP/streamable-http-->  app  -->  Atlas Local
 #                                                              |
-#   Ollama (remote, yours) <--- inference ---------------------+ (no, see below)
+#   OpenAI-compatible endpoint, or Ollama <--- inference ------+ (no, see below)
 #
-# Ollama is NOT in this file. It is remote and yours; Open WebUI talks to it
-# directly over OLLAMA_BASE_URL. Nothing else in the stack calls it.
+# The chat backend is NOT in this file. By default it is any service speaking
+# the OpenAI dialect — api.openai.com, AWS Bedrock, a local Ollama's /v1,
+# vLLM — reached over OPENAI_BASE_URL with OPENAI_API_KEY. Leave the key unset
+# and set OLLAMA_BASE_URL to chat through a plain Ollama server instead. Open
+# WebUI talks to it directly; nothing else in the stack calls it. None of these
+# variables reach src/config/env.ts — the app's embeddings stay on the
+# EMBEDDING_* configuration from .env (Voyage AI by default).
 #
-# VARIABLES THIS FILE READS (none of them reach src/config/env.ts — they are
-# compose-only, for third-party images):
+# VARIABLES THIS FILE READS (all compose-only, for third-party images):
 #
-#   OLLAMA_BASE_URL   required. Your Ollama server, e.g. http://192.168.1.50:11434
-#                     Must be reachable FROM THE OPEN WEBUI CONTAINER. See the
-#                     note on host.docker.internal in docker/open-webui/README.md.
+#   OPENAI_API_KEY    the default chat backend. Set it and the demo chats
+#                     through an OpenAI-compatible endpoint.
+#   OPENAI_BASE_URL   optional, default https://api.openai.com/v1. Must be
+#                     reachable FROM THE OPEN WEBUI CONTAINER — see the note on
+#                     host.docker.internal in docker/open-webui/README.md.
+#   OLLAMA_BASE_URL   the fallback chat backend: a plain Ollama server, e.g.
+#                     http://192.168.1.50:11434. Same reachability note.
 #   MCPO_API_KEY      optional. The key Open WebUI presents to mcpo.
 #   OPEN_WEBUI_PORT   optional, default 8080. NOT 3000 — the app owns 3000.
 
@@ -91,8 +99,8 @@ services:
         max-file: '3'
 
   # ---------------------------------------------------------------------------
-  # Open WebUI. Chat front end; talks to your remote Ollama for inference and to
-  # mcpo for tools.
+  # Open WebUI. Chat front end; talks to your OpenAI-compatible endpoint for
+  # inference and to mcpo for tools.
   # ---------------------------------------------------------------------------
   open-webui:
     image: ghcr.io/open-webui/open-webui:main
@@ -105,9 +113,13 @@ services:
         condition: service_started
 
     environment:
-      # Required. `:?` makes compose fail loudly with this message rather than
-      # starting a UI with no models in it.
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:?set OLLAMA_BASE_URL to your Ollama server, e.g. http://192.168.1.50:11434}
+      # One of the two chat backends must be set — typed into run.sh, or
+      # supplied via .env (a value typed into run.sh wins for that run).
+      # These seed a fresh database — on later boots the seeder rewrites them
+      # through the admin API, so the effective values always match this run.
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_API_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
       # No sign-in. This is a demo: one fewer step between `up` and a working
       # chat.
       #
@@ -168,20 +180,24 @@ services:
 
     environment:
       - OWUI_URL=http://open-webui:8080
-      # Open WebUI treats OLLAMA_BASE_URL as a PersistentConfig: the environment
-      # seeds it once, then its database wins and later changes to the variable
-      # are ignored. The seeder writes it through the admin API on every run so
-      # the value passed to run.sh is the one that actually applies.
-      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
+      # Open WebUI treats both chat connections as PersistentConfig: the
+      # environment seeds them once, then its database wins and later changes
+      # to the variables are ignored. The seeder writes whichever backend was
+      # given through the admin API on every run, so the values passed to
+      # run.sh are the ones that actually apply.
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-}
       - OWUI_ADMIN_EMAIL=${OWUI_ADMIN_EMAIL:-admin@example.com}
       - OWUI_ADMIN_PASSWORD=${OWUI_ADMIN_PASSWORD:-please-change-me}
       - OWUI_ADMIN_NAME=${OWUI_ADMIN_NAME:-Demo Admin}
       - MCPO_URL=http://mcpo:8000/${MCPO_SERVER_ID:-ragkb}
       - MCPO_API_KEY=${MCPO_API_KEY:-demo-mcpo-key}
       - MCPO_SERVER_ID=${MCPO_SERVER_ID:-ragkb}
-      # Optional. Set it to a pulled Ollama model (e.g. qwen3:latest) and the
-      # seeder also creates a model preset with Native function calling and the
-      # knowledge-base system prompt already applied.
+      # Optional. Set it to a model your chat backend serves (e.g. gpt-4o-mini,
+      # or an Ollama tag like qwen3:latest) and the seeder also creates a model
+      # preset with Native function calling and the knowledge-base system
+      # prompt already applied.
       - OWUI_BASE_MODEL=${OWUI_BASE_MODEL:-}
       - OWUI_MODEL_ID=${OWUI_MODEL_ID:-mongodb-kb}
 
