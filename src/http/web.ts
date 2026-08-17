@@ -71,6 +71,23 @@ const CONTENT_SECURITY_POLICY = [
 const SEARCH_LIMITS = [10, 25, 50] as const;
 const DOCUMENTS_PAGE_SIZE = 20;
 
+/**
+ * The two readings of one document, and the order they are offered in.
+ *
+ * `chunks` stays the default because it is what the retrieval side actually
+ * searches — the full text is the source, but the chunks are the artefact.
+ * The choice rides in the query string rather than in a script: with
+ * `default-src 'none'` and no client JavaScript, a tab has to be a link, which
+ * has the side benefit of making each reading independently bookmarkable and
+ * survivable across a reload.
+ */
+const DOCUMENT_TABS = [
+  { value: 'chunks', label: 'Chunks' },
+  { value: 'full', label: 'Full document' },
+] as const;
+
+type DocumentTab = (typeof DOCUMENT_TABS)[number]['value'];
+
 const SEARCH_MODES: ReadonlyArray<{ value: '' | SearchMode; label: string }> = [
   { value: '', label: 'Automatic (server default)' },
   { value: 'hybrid', label: 'Hybrid — vector + keyword, rank-fused' },
@@ -234,12 +251,22 @@ export function createWebRouter(deps: WebDeps): Router {
       const detail = await service.getDocument(id, context(req, res));
       if (!detail) throw new NotFoundError(`No document with id or sourceId "${id}"`);
 
+      const tab = asDocumentTab(firstString(req.query.view));
+
       res.render('layout', {
         view: 'document',
         activeNav: 'documents',
         title: detail.document.title,
         doc: toDocumentView(detail.document),
         chunks: detail.chunks.map(toChunkView),
+        tab,
+        tabs: DOCUMENT_TABS.map((entry) => ({
+          ...entry,
+          // Built from the request's own path so the link survives whichever of
+          // the id or the sourceId was used to reach the page.
+          href: hrefFor(req.path, { view: entry.value }),
+          active: entry.value === tab,
+        })),
       });
     }),
   );
@@ -398,6 +425,7 @@ function toDocumentView(document: {
   uri: string | null;
   contentType: string;
   tags: string[];
+  content: string;
   contentLength: number;
   contentHash: string;
   version: number;
@@ -429,6 +457,11 @@ function toDocumentView(document: {
     contentType: document.contentType,
     tags: document.tags,
     version: document.version,
+    // The verbatim bytes that were ingested, escaped by the template like every
+    // other stored value. Rendering it whole is no more page weight than the
+    // chunk list already is: chunks overlap, so they sum to more than this.
+    content: document.content,
+    contentLength: document.contentLength,
     sizeLabel: formatChars(document.contentLength),
     // First 12 hex characters is plenty to eyeball "did this change?".
     contentHashShort: document.contentHash.slice(0, 12),
@@ -525,6 +558,11 @@ function firstString(value: unknown): string | undefined {
 
 function asMode(value: string | undefined): '' | SearchMode {
   return value === 'vector' || value === 'text' || value === 'hybrid' ? value : '';
+}
+
+/** Anything unrecognised falls back to the default tab rather than 404ing. */
+function asDocumentTab(value: string | undefined): DocumentTab {
+  return DOCUMENT_TABS.some((tab) => tab.value === value) ? (value as DocumentTab) : 'chunks';
 }
 
 /** Only the offered page sizes are honoured; anything else is the default. */

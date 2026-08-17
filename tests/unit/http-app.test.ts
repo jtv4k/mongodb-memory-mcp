@@ -599,6 +599,69 @@ describe('web UI', () => {
     expect(app.service.getDocument).toHaveBeenCalledWith('notes/release', expect.anything());
   });
 
+  it('defaults to the chunk view and offers a link to the full document', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+
+    expect(html).toContain('chunk zero body');
+    expect(html).not.toContain('the whole document body, verbatim');
+    // The tab link preserves whichever identifier was used to reach the page.
+    expect(html).toContain('/documents/notes%2Frelease?view=full');
+  });
+
+  it('renders the full document body when the full tab is selected', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full`)).text();
+
+    expect(html).toContain('the whole document body, verbatim');
+    expect(html).not.toContain('chunk zero body');
+    expect(html).toContain('/documents/notes%2Frelease?view=chunks');
+  });
+
+  it('marks only the selected tab as current', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full`)).text();
+
+    // Scoped to the tab strip: the header nav marks its own active item too.
+    const tabStrip = html.slice(html.indexOf('aria-label="Document content views"'));
+    const current = tabStrip.match(/aria-current="page"/gu) ?? [];
+    expect(current).toHaveLength(1);
+    // The marker belongs to the Full document link, not the Chunks one.
+    expect(tabStrip).toMatch(/aria-current="page"[\s\S]*?>\s*Full document/u);
+  });
+
+  it('falls back to the chunk view for an unrecognised tab rather than failing', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const response = await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=nonsense`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('chunk zero body');
+  });
+
+  it('escapes hostile document content in the full view', async () => {
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({ content: '<script>alert(1)</script>', contentLength: 25 }),
+    );
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full`)).text();
+
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('shows an empty state instead of a blank panel for a document with no content', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail({ content: '', contentLength: 0 }));
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full`)).text();
+
+    expect(html).toContain('This document has no stored content.');
+  });
+
   it('renders the error page when a document does not exist', async () => {
     app.service.getDocument.mockResolvedValue(null);
 
@@ -688,8 +751,10 @@ function documentRow() {
   };
 }
 
-function documentDetail() {
-  const { excerpt: _excerpt, ...document } = documentRow();
+function documentDetail(overrides: Record<string, unknown> = {}) {
+  const { excerpt: _excerpt, ...row } = documentRow();
+  // Only the detail path carries the verbatim body; the list result omits it.
+  const document = { ...row, content: 'the whole document body, verbatim', ...overrides };
 
   return {
     document,
