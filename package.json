@@ -15,8 +15,9 @@
     "npm": ">=11"
   },
   "scripts": {
-    "dev": "tsx watch --clear-screen=false src/index.ts",
-    "dev:css": "tailwindcss -i ./src/styles/tailwind.css -o ./src/public/css/app.css --watch",
+    "dev": "concurrently -n ts,css -c blue,magenta \"npm:dev:ts\" \"npm:dev:css\"",
+    "dev:ts": "tsx watch --clear-screen=false src/index.ts",
+    "dev:css": "tailwindcss -i ./src/styles/tailwind.css -o ./src/public/css/app.css --watch=always --poll=500",
     "build": "npm run build:ts && npm run build:css && npm run build:assets",
     "build:ts": "tsc -p tsconfig.build.json",
     "build:css": "tailwindcss -i ./src/styles/tailwind.css -o ./src/public/css/app.css --minify",
@@ -53,6 +54,7 @@
     "@types/express": "^5.0.0",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^3.0.0",
+    "concurrently": "^10.0.5",
     "eslint": "^9.20.0",
     "eslint-config-prettier": "^10.0.0",
     "globals": "^15.15.0",
