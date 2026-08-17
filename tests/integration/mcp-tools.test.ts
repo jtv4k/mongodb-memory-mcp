@@ -283,7 +283,7 @@ describe('tools over the real Streamable HTTP transport', () => {
     const output = listSourcesOutput.parse(result.structuredContent);
     expect(output.total).toBe(1);
     expect(output.sources[0]?.sourceId).toBe(ATLAS_GUIDE.sourceId);
-    // Dates are serialised for the wire, per the declared output shape.
+    // Dates are serialized for the wire, per the declared output shape.
     expect(() => new Date(output.sources[0]?.updatedAt ?? '')).not.toThrow();
     expect(Number.isNaN(Date.parse(output.sources[0]?.updatedAt ?? ''))).toBe(false);
     expect(output.sources[0]?.embeddingModels).toEqual([h.config.embedding.model]);

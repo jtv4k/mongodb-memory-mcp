@@ -6,7 +6,7 @@
  *     failures — see {@link logAppError}, which maps `AppError.kind` to a
  *     stable `event` name and an appropriate level.
  *  2. Nothing secret or enormous reaches the log: auth headers and API keys are
- *     redacted, and raw embedding vectors are never serialised.
+ *     redacted, and raw embedding vectors are never serialized.
  */
 import { pino, stdSerializers, stdTimeFunctions, type Logger, type LoggerOptions } from 'pino';
 

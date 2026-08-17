@@ -41,10 +41,10 @@ interface LogRecord {
   level: string;
   message: string;
   /** Fully expanded, so an `Error` hiding a secret in its message is visible. */
-  serialised: string;
+  serialized: string;
 }
 
-function serialise(payload: unknown): string {
+function serialize(payload: unknown): string {
   return JSON.stringify(payload, (_key, value: unknown) => {
     if (value instanceof Error) {
       return { name: value.name, message: value.message, stack: value.stack };
@@ -58,7 +58,7 @@ function createRecordingLogger(): { logger: Logger; records: LogRecord[] } {
   const at =
     (level: string) =>
     (payload: unknown, message?: string): void => {
-      records.push({ level, message: message ?? '', serialised: serialise(payload) ?? '' });
+      records.push({ level, message: message ?? '', serialized: serialize(payload) ?? '' });
     };
   const logger = {
     fatal: at('fatal'),
@@ -307,10 +307,10 @@ describe('secret hygiene', () => {
 
     expect(records).toHaveLength(1);
     for (const record of records) {
-      expect(record.serialised).not.toContain(TOKEN);
-      expect(record.serialised).not.toContain(presented);
+      expect(record.serialized).not.toContain(TOKEN);
+      expect(record.serialized).not.toContain(presented);
       // Not even a prefix, which would still be a verifier for an offline guess.
-      expect(record.serialised).not.toContain(TOKEN.slice(0, 12));
+      expect(record.serialized).not.toContain(TOKEN.slice(0, 12));
     }
   });
 
@@ -323,11 +323,11 @@ describe('secret hygiene', () => {
 
     const record = records[0];
     expect(record?.level).toBe('warn');
-    expect(record?.serialised).toContain('auth.rejected');
-    expect(record?.serialised).toContain('198.51.100.4');
-    expect(record?.serialised).toContain('"presentedApiKey":true');
-    expect(record?.serialised).toContain('"presentedAuthorization":false');
-    expect(record?.serialised).toContain('/api/x');
+    expect(record?.serialized).toContain('auth.rejected');
+    expect(record?.serialized).toContain('198.51.100.4');
+    expect(record?.serialized).toContain('"presentedApiKey":true');
+    expect(record?.serialized).toContain('"presentedAuthorization":false');
+    expect(record?.serialized).toContain('/api/x');
   });
 
   it('strips quotes out of the realm so a server name cannot inject a header parameter', () => {
@@ -426,10 +426,10 @@ describe('failed-attempt throttle', () => {
   it('never writes either token into the throttle log line', () => {
     for (let attempt = 1; attempt <= MAX_FAILURES + 1; attempt += 1) guess('198.51.100.4');
 
-    expect(records.some((record) => record.serialised.includes('auth.throttled'))).toBe(true);
+    expect(records.some((record) => record.serialized.includes('auth.throttled'))).toBe(true);
     for (const record of records) {
-      expect(record.serialised).not.toContain(TOKEN);
-      expect(record.serialised).not.toContain('wrong-token-entirely');
+      expect(record.serialized).not.toContain(TOKEN);
+      expect(record.serialized).not.toContain('wrong-token-entirely');
     }
   });
 });

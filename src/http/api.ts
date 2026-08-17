@@ -5,7 +5,7 @@
  * so the knowledge base is usable from `curl`, a cron job or a future client
  * that does not speak MCP, without any of them reimplementing chunking rules.
  * Transports hold no business logic (see `services/types.ts`): each handler
- * coerces, validates, calls one service method, and serialises the result.
+ * coerces, validates, calls one service method, and serializes the result.
  *
  * ## Authentication: every route, reads included
  *
@@ -268,7 +268,7 @@ function decimal(value: unknown): number | undefined {
 const TRUTHY = new Set(['1', 'true', 'yes', 'on']);
 const FALSY = new Set(['0', 'false', 'no', 'off']);
 
-/** Unrecognised spellings fall through as the raw string for zod to reject. */
+/** Unrecognized spellings fall through as the raw string for zod to reject. */
 function boolean(value: unknown): boolean | string | undefined {
   const raw = text(value);
   if (raw === undefined) return undefined;

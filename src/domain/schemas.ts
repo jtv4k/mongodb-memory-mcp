@@ -193,7 +193,7 @@ const metadataSchema = z
     if (serialized.length > MAX_METADATA_JSON_CHARS) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: `serialised metadata must be <= ${MAX_METADATA_JSON_CHARS} characters`,
+        message: `serialized metadata must be <= ${MAX_METADATA_JSON_CHARS} characters`,
       });
     }
   });

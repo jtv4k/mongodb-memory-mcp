@@ -103,7 +103,7 @@ instead of `error` as an ingestion fault.
 
 Declaring `outputSchema` makes the SDK validate `structuredContent` against it on
 every call. A `Date` in your result object against a `z.string()` in the shape is
-a runtime failure, not a type error — serialise explicitly
+a runtime failure, not a type error — serialize explicitly
 (`value.toISOString()`), the way `listSourcesOutputShape` expects
 `createdAt: z.string()`.
 
@@ -261,7 +261,7 @@ Cover, at minimum:
 - A service that throws (`EmbeddingError`, `NotFoundError`) yields
   `isError: true`, a useful message, and no stack trace.
 - `structuredContent` validates against the declared `outputSchema` (the SDK
-  does this for you — a mis-serialised `Date` will fail the test here).
+  does this for you — a mis-serialized `Date` will fail the test here).
 
 **Integration — `tests/integration/`.** Real Atlas Local, real indexes, the
 deterministic fake embedder, wired up by `helpers/harness.ts`. Add coverage that

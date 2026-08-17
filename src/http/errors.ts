@@ -3,15 +3,15 @@
  *
  * Three rules drive everything here.
  *
- *  1. **Nothing internal escapes.** Every thrown value is normalised to an
- *     `AppError` and serialised with `toClientPayload()`, which deliberately
+ *  1. **Nothing internal escapes.** Every thrown value is normalized to an
+ *     `AppError` and serialized with `toClientPayload()`, which deliberately
  *     omits the cause chain. A stack trace is attached only outside production.
  *
  *     Two mechanisms enforce this, because `toAppError` preserves the original
- *     `Error.message` when it wraps an unrecognised throw — so "it became an
+ *     `Error.message` when it wraps an unrecognized throw — so "it became an
  *     `InternalError`" is NOT on its own a guarantee that the message is safe:
  *
- *       - `kind: 'internal'` (the unrecognised bucket) is answered with a fixed
+ *       - `kind: 'internal'` (the unrecognized bucket) is answered with a fixed
  *         string and no `details`. The real message is in the log line, findable
  *         by request id. This is the only kind we cannot reason about, so it is
  *         the only one that is discarded wholesale.

@@ -345,14 +345,14 @@ export class VoyageEmbeddingProvider implements EmbeddingProvider {
     options: EmbedOptions,
   ): Promise<{ payload: unknown; attempts: number; durationMs: number }> {
     const url = `${this.baseUrl}${path}`;
-    const serialised = JSON.stringify(body);
+    const serialized = JSON.stringify(body);
     const maxAttempts = this.maxRetries + 1;
     const started = Date.now();
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       this.throwIfCallerAborted(options.signal, attempt);
 
-      const outcome = await this.attempt(url, serialised, options.signal, attempt, maxAttempts);
+      const outcome = await this.attempt(url, serialized, options.signal, attempt, maxAttempts);
       if (outcome.ok) {
         return { payload: outcome.payload, attempts: attempt, durationMs: Date.now() - started };
       }

@@ -7,7 +7,7 @@
  * an unbounded array would blow the 16MB document limit and make vector
  * indexing impossible.
  *
- * Denormalisation note: each chunk carries a copy of its parent's `title`,
+ * Denormalization note: each chunk carries a copy of its parent's `title`,
  * `uri`, `tags` and `contentType`. That is intentional. `$vectorSearch` can only
  * filter on fields indexed in the vector index itself, and search results need
  * source attribution without a `$lookup` per hit.

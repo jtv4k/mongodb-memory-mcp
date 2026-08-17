@@ -82,9 +82,7 @@ function createFakeService() {
     getDocument: vi.fn<KnowledgeService['getDocument']>(),
     reembed: vi.fn<KnowledgeService['reembed']>(),
     embeddingCoverage: vi.fn<KnowledgeService['embeddingCoverage']>(),
-    isVectorIndexReady: vi
-      .fn<KnowledgeService['isVectorIndexReady']>()
-      .mockResolvedValue(true),
+    isVectorIndexReady: vi.fn<KnowledgeService['isVectorIndexReady']>().mockResolvedValue(true),
   };
 }
 
@@ -584,7 +582,7 @@ describe('search_knowledge', () => {
 // ---------------------------------------------------------------------------
 
 describe('list_sources', () => {
-  it('renders an aligned table and serialises dates as ISO strings', async () => {
+  it('renders an aligned table and serializes dates as ISO strings', async () => {
     harness.service.listSources.mockResolvedValue(listSourcesResult);
 
     const outcome = await call(harness, 'list_sources', { limit: 2 });
