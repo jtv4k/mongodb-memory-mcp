@@ -126,6 +126,12 @@ export function createWebRouter(deps: WebDeps): Router {
         limit: clampLimit(firstString(req.query.limit)),
       };
 
+      // Checked before a query is even submitted so the page can warn upfront
+      // rather than letting someone type a question and only then discover the
+      // index it depends on was never created — the same information a failed
+      // search would eventually surface, just earlier.
+      const vectorIndexReady = await service.isVectorIndexReady();
+
       const base = {
         view: 'search',
         activeNav: 'search',
@@ -133,6 +139,8 @@ export function createWebRouter(deps: WebDeps): Router {
         modes: SEARCH_MODES,
         limits: SEARCH_LIMITS,
         hybridEnabled: config.search.hybridEnabled,
+        vectorIndexReady,
+        vectorIndexName: config.mongo.vectorIndexName,
       };
 
       // Empty state: no query yet. Not an error, and not a blank page.

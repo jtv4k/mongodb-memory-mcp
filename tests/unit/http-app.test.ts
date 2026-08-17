@@ -61,6 +61,7 @@ function createFakeService(): FakeService {
     getDocument: vi.fn(),
     reembed: vi.fn(),
     embeddingCoverage: vi.fn(),
+    isVectorIndexReady: vi.fn().mockResolvedValue(true),
   };
 }
 
@@ -485,6 +486,37 @@ describe('web UI', () => {
     expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
     expect(response.headers.get('x-content-type-options')).toBe('nosniff');
     expect(app.service.searchKnowledge).not.toHaveBeenCalled();
+  });
+
+  it('does not warn about the vector index when it is ready', async () => {
+    app.service.isVectorIndexReady.mockResolvedValue(true);
+
+    const response = await fetch(`${app.baseUrl}/search`);
+    const html = await response.text();
+
+    expect(html).not.toContain('Vector search index not ready');
+  });
+
+  it('warns upfront when the vector index is not queryable, before any query is run', async () => {
+    app.service.isVectorIndexReady.mockResolvedValue(false);
+
+    const response = await fetch(`${app.baseUrl}/search`);
+    const html = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(html).toContain('Vector search index not ready');
+    expect(html).toContain('npm run db:indexes');
+    expect(app.service.searchKnowledge).not.toHaveBeenCalled();
+  });
+
+  it('does not duplicate the notice when a search also fails outright', async () => {
+    app.service.isVectorIndexReady.mockResolvedValue(false);
+    app.service.searchKnowledge.mockRejectedValue(new EmbeddingError('provider unreachable'));
+
+    const html = await (await fetch(`${app.baseUrl}/search?q=anything`)).text();
+
+    expect(html).toContain('Search failed');
+    expect(html).not.toContain('Vector search index not ready');
   });
 
   it('escapes hostile ingested content instead of rendering it', async () => {

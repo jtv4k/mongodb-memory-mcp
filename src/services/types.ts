@@ -72,4 +72,12 @@ export interface KnowledgeService {
 
   /** Which embedding models are present in the corpus, and how much of it. */
   embeddingCoverage(ctx: RequestContext): Promise<EmbeddingCoverage[]>;
+
+  /**
+   * Whether the vector search index is currently queryable. Lets a caller warn
+   * before a search is attempted rather than only after `searchKnowledge`
+   * throws; backed by the same confirmed-once-true check that leg uses, so it
+   * never disagrees with what a real search would find.
+   */
+  isVectorIndexReady(): Promise<boolean>;
 }

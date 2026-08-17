@@ -1461,6 +1461,10 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     }));
   }
 
+  function isVectorIndexReady(): Promise<boolean> {
+    return confirmIndex('vector', config.mongo.vectorIndexName);
+  }
+
   return {
     storeContent,
     searchKnowledge,
@@ -1470,6 +1474,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     getDocument,
     reembed,
     embeddingCoverage,
+    isVectorIndexReady,
   };
 }
 

@@ -82,6 +82,9 @@ function createFakeService() {
     getDocument: vi.fn<KnowledgeService['getDocument']>(),
     reembed: vi.fn<KnowledgeService['reembed']>(),
     embeddingCoverage: vi.fn<KnowledgeService['embeddingCoverage']>(),
+    isVectorIndexReady: vi
+      .fn<KnowledgeService['isVectorIndexReady']>()
+      .mockResolvedValue(true),
   };
 }
 

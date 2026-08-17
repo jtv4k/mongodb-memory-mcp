@@ -2,7 +2,7 @@
   Search page.
 
   Locals: form { q, mode, tags, limit }, modes, limits, hybridEnabled,
-          results | null, searchError | null.
+          vectorIndexReady, vectorIndexName, results | null, searchError | null.
 
   Every control is a plain form field named after the query parameter it sets,
   so the form state and the URL are the same thing and a result page can be
@@ -104,6 +104,20 @@
     </div>
   </div>
 </form>
+
+<% if (!vectorIndexReady && !searchError) { %>
+<div
+  role="status"
+  class="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/40"
+>
+  <h2 class="text-sm font-semibold text-amber-900 dark:text-amber-200">Vector search index not ready</h2>
+  <p class="mt-1 text-sm text-amber-800 dark:text-amber-200">
+    The <code class="font-mono"><%= vectorIndexName %></code> vector search index is missing or still
+    building. Semantic and hybrid search will not return results until it is queryable — text-only
+    search still works. Run <code class="font-mono">npm run db:indexes</code> to create it.
+  </p>
+</div>
+<% } %>
 
 <% if (searchError) { %>
 <div
