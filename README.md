@@ -185,21 +185,49 @@ and rank on every hit, which a server-side fusion stage does not surface.
 ## Connecting an MCP client
 
 The transport is **Streamable HTTP** at `http://localhost:3000/mcp` (change the
-path with `MCP_PATH`), authenticated with the same bearer token. For a client
-that reads an `mcp.json`-style config:
+path with `MCP_PATH`), authenticated with the same bearer token.
+
+The repo ships a checked-in `.mcp.json` for exactly this:
 
 ```json
 {
   "mcpServers": {
-    "rag-kb": {
+    "mongodb-memory-mcp": {
       "type": "http",
-      "url": "http://localhost:3000/mcp",
+      "url": "http://${MCP_HOST:-localhost}:${PORT:-3000}${MCP_PATH:-/mcp}",
       "headers": {
-        "Authorization": "Bearer <your MCP_AUTH_TOKEN>"
+        "Authorization": "Bearer ${MCP_MONGODB_MEMORY_TOKEN}"
       }
     }
   }
 }
+```
+
+Clients that support `.mcp.json` (Claude Code included) expand those `${VAR}`
+references from **the client's own shell environment** — a different process
+from this server, so the value has to be set there too, not just in `.env`.
+`MCP_MONGODB_MEMORY_TOKEN` is a deliberately project-specific name (distinct
+from this server's own `MCP_AUTH_TOKEN` config variable) so that a shell
+sourcing several projects' token variables at once can't collide two servers
+under one generic name. One-time setup:
+
+```bash
+cat >> ~/.mcp-env <<'EOF'
+export MCP_MONGODB_MEMORY_TOKEN="<the MCP_AUTH_TOKEN value from your .env>"
+EOF
+chmod 600 ~/.mcp-env
+echo 'source ~/.mcp-env' >> ~/.zshrc   # or your shell's profile
+```
+
+Restart your terminal (or `source ~/.zshrc`) and reopen your MCP client from
+that shell — it picks up `.mcp.json` automatically. The running server prints
+this same reminder to stderr on every development-mode startup.
+
+For a client without `.mcp.json` support, register the server manually:
+
+```bash
+claude mcp add --transport http mongodb-memory-mcp http://localhost:3000/mcp \
+  -H "Authorization: Bearer <your MCP_AUTH_TOKEN>"
 ```
 
 Sanity check it with curl. An unauthenticated request must be rejected:

@@ -61,6 +61,10 @@ async function main(): Promise<void> {
 
   installSignalHandlers({ config, logger, server, connection, embeddings, shutdown });
 
+  if (config.runtime.nodeEnv === 'development') {
+    printMcpClientSetupHint(config);
+  }
+
   // After `listen`, deliberately: the probe is a round trip to mongot and there
   // is no reason to delay accepting traffic (or a health check) behind it.
   await warnUnlessVectorIndexReady(connection, config, logger);
@@ -160,6 +164,45 @@ function listen(listenFn: ListenFn, config: AppConfig, logger: Logger): Promise<
 
     server.once('error', reject);
   });
+}
+
+/**
+ * Point a developer at the one-time shell setup an MCP client needs.
+ *
+ * The checked-in `.mcp.json` expands `${MCP_MONGODB_MEMORY_TOKEN}` from *the
+ * client's* shell environment, not this process's — Claude Code (or any other
+ * shell-based client) resolves that file itself, in a different process. That
+ * name is deliberately distinct from this server's own `MCP_AUTH_TOKEN`
+ * config variable so a shell with several projects' `.mcp.json` files sourced
+ * at once cannot collide two servers' tokens under one generic name. This
+ * server has no way to know whether that shell already has the variable, so
+ * the hint is unconditional in development rather than trying to detect it.
+ * Plain stderr, not the logger: this is for a human reading `docker compose
+ * up` output, not a line pino should ever emit as JSON.
+ */
+function printMcpClientSetupHint(config: AppConfig): void {
+  const url = `http://localhost:${config.runtime.port}${config.mcp.path}`;
+  console.error(
+    [
+      '',
+      '── Connecting Claude Code (or another MCP client) to this server ──',
+      '',
+      `This project ships a .mcp.json pointing at ${url}, which expects`,
+      'MCP_MONGODB_MEMORY_TOKEN in the shell your MCP client runs from — not',
+      'this container. One-time setup, from your host shell:',
+      '',
+      "  cat >> ~/.mcp-env <<'EOF'",
+      '  export MCP_MONGODB_MEMORY_TOKEN="<the MCP_AUTH_TOKEN value from your .env>"',
+      '  EOF',
+      '  chmod 600 ~/.mcp-env',
+      "  echo 'source ~/.mcp-env' >> ~/.zshrc   # or your shell's profile",
+      '',
+      'Restart your terminal (or `source ~/.zshrc`) and reopen your MCP',
+      'client from that shell — it will pick up .mcp.json automatically.',
+      '─────────────────────────────────────────────────────────────────',
+      '',
+    ].join('\n'),
+  );
 }
 
 /** Loud, non-fatal warning when `$vectorSearch` has nothing to search. */

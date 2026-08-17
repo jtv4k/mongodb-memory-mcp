@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "mongodb-memory-mcp": {
+      "type": "http",
+      "url": "http://${MCP_HOST:-localhost}:${PORT:-3000}${MCP_PATH:-/mcp}",
+      "headers": {
+        "Authorization": "Bearer ${MCP_MONGODB_MEMORY_TOKEN}"
+      }
+    }
+  }
+}
