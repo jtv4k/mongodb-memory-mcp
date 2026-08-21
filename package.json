@@ -1,6 +1,6 @@
 {
   "name": "mongodb-memory-mcp",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "description": "MCP server that gives AI agents persistent, searchable memory backed by MongoDB — structure-aware chunking, contextual embeddings, and hybrid search over MCP, REST and a server-rendered web UI.",
   "license": "Apache-2.0",
