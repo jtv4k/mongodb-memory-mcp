@@ -667,6 +667,62 @@ describe('web UI', () => {
     expect(tabStrip.indexOf('Chunks')).toBeLessThan(tabStrip.indexOf('Details'));
   });
 
+  it('renders markdown on the full tab, with a link to the source', async () => {
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({ contentType: 'markdown', content: '# Heading\n\nsome **bold** text' }),
+    );
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+
+    expect(html).toContain('<h1');
+    expect(html).toContain('<strong>bold</strong>');
+    expect(html).toContain('?view=full&amp;raw=1');
+    expect(html).toContain('View source');
+  });
+
+  it('shows the verbatim source when raw=1, with a link back', async () => {
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({ contentType: 'markdown', content: '# Heading' }),
+    );
+
+    const html = await (
+      await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full&raw=1`)
+    ).text();
+
+    expect(html).not.toContain('<h1 class="mt-6');
+    expect(html).toContain('# Heading');
+    expect(html).toContain('View rendered');
+  });
+
+  it('never renders a non-markdown document, and offers no toggle for one', async () => {
+    // A renderer pointed at plain text invents headings out of stray hashes.
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({ contentType: 'text', content: '# not a heading\n\n**not bold**' }),
+    );
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+
+    expect(html).toContain('# not a heading');
+    expect(html).not.toContain('<strong>');
+    expect(html).not.toContain('raw=1');
+    expect(html).not.toContain('View source');
+  });
+
+  it('escapes hostile markdown rather than rendering it', async () => {
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({
+        contentType: 'markdown',
+        content: '# <script>alert(1)</script>\n\n[x](javascript:alert(1))',
+      }),
+    );
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).not.toContain('javascript:');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
   it('falls back to the full document for an unrecognised tab rather than failing', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 

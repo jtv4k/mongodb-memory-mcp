@@ -4,7 +4,9 @@
 
   Locals: doc (DocumentView), chunks (ChunkView list),
           tab ('full' | 'chunks' | 'details'),
-          tabs (list of { value, label, href, active }).
+          tabs (list of { value, label, href, active }),
+          contentHtml (rendered markdown, or null for the verbatim source),
+          rawToggle ({ href, label } for markdown documents, else null).
 
   Only the identity block above the tabs — title, type, size, version, uri,
   tags — is shown on every reading. Everything else belongs to exactly one
@@ -259,9 +261,17 @@
   >
     Full document
     <span class="ml-1 text-sm font-normal text-slate-500 dark:text-slate-400"
-      >(<%= doc.sizeLabel %>, exactly as ingested)</span
+      >(<%= doc.sizeLabel %><%= contentHtml ? '' : ', exactly as ingested' %>)</span
     >
   </h2>
+
+  <% if (rawToggle) { %>
+  <a
+    href="<%= rawToggle.href %>"
+    class="mt-1 inline-block text-xs text-slate-500 underline underline-offset-2 hover:text-indigo-700 dark:text-slate-400 dark:hover:text-indigo-300"
+    ><%= rawToggle.label %></a
+  >
+  <% } %>
 
   <% if (doc.contentLength === 0) { %>
   <p
@@ -269,6 +279,18 @@
   >
     This document has no stored content.
   </p>
+  <% } else if (contentHtml) { %>
+  <%#
+    The second and last raw output tag in the application. `contentHtml` is
+    produced only by services/markdown.ts, which escapes every span of source
+    text and emits its own fixed tag set — the same contract renderFragmentsHtml
+    follows for <mark>. Never interpolate doc.content here.
+  -%>
+  <div
+    class="mt-3 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:p-6 dark:border-slate-800 dark:bg-slate-900"
+  >
+    <%- contentHtml %>
+  </div>
   <% } else { %>
   <pre
     class="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap text-slate-800 sm:p-5 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"

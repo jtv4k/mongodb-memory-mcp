@@ -47,6 +47,7 @@ import { listDocumentsSchema, parseInput, searchKnowledgeSchema } from '../domai
 import { NotFoundError, toAppError } from '../errors.js';
 import { logAppError, type Logger } from '../logger.js';
 import { buildHighlightFragments, renderFragmentsHtml } from '../services/highlight.js';
+import { renderMarkdown } from '../services/markdown.js';
 import type { KnowledgeService } from '../services/types.js';
 
 import { createRequestContext, getRequestId } from './request-id.js';
@@ -256,6 +257,12 @@ export function createWebRouter(deps: WebDeps): Router {
       if (!detail) throw new NotFoundError(`No document with id or sourceId "${id}"`);
 
       const tab = asDocumentTab(firstString(req.query.view));
+      // Only markdown gets rendered, and only when the reader has not asked for
+      // the source. A renderer pointed at plain text or JSON invents structure
+      // out of stray `#` and `*` characters, so the declared contentType is the
+      // gate rather than a guess at the body.
+      const raw = firstString(req.query.raw) === '1';
+      const markdown = detail.document.contentType === 'markdown';
 
       res.render('layout', {
         view: 'document',
@@ -264,6 +271,18 @@ export function createWebRouter(deps: WebDeps): Router {
         doc: toDocumentView(detail.document),
         chunks: detail.chunks.map(toChunkView),
         tab,
+        // PRE-ESCAPED HTML from `renderMarkdown`, or null to render the source in
+        // a <pre>. The only other `<%- %>` value on any page is the search
+        // snippet; both come from a module that escapes text and emits its own
+        // tags. See services/markdown.ts.
+        contentHtml: markdown && !raw ? renderMarkdown(detail.document.content) : null,
+        // Non-null only for markdown, so the toggle appears nowhere else.
+        rawToggle: markdown
+          ? {
+              href: hrefFor(req.path, raw ? { view: 'full' } : { view: 'full', raw: '1' }),
+              label: raw ? 'View rendered' : 'View source',
+            }
+          : null,
         tabs: DOCUMENT_TABS.map((entry) => ({
           ...entry,
           // Built from the request's own path so the link survives whichever of
