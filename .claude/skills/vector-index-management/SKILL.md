@@ -42,7 +42,7 @@ It needs `MONGODB_URI` and `MONGODB_DB_NAME` in its environment. Inside the dev
 stack that is already true:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
   run --rm app npm run db:indexes
 ```
 

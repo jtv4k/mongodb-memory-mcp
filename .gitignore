@@ -47,3 +47,8 @@ CLAUDE.local.md
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Machine-local compose override: a shared services network, a database outside
+# this repo, a personal port. Never committed; docker-compose.local.yml.example
+# is the checked-in template.
+docker/docker-compose.local.yml

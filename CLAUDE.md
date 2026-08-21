@@ -461,7 +461,7 @@ image is built locally, never pulled; some Compose versions try to pull a
 missing image instead of building it:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml up --build
 ```
 
 First boot of Atlas Local takes 20–40s (replica-set init + `mongot` start); the
@@ -470,7 +470,7 @@ healthcheck allows 90s. The app waits on `service_healthy`.
 Apply the index definitions into the running stack:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
   run --rm app npm run db:indexes
 ```
 

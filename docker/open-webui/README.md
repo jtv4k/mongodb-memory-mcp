@@ -53,9 +53,10 @@ OWUI_BASE_MODEL=qwen3:latest                 # optional, see below
 docker compose --env-file .env \
   -f docker/docker-compose.yml \
   -f docker/docker-compose.dev.yml \
+  -f docker/docker-compose.db.yml \
   -f docker/docker-compose.demo.yml up --build
 
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
   -f docker/docker-compose.demo.yml run --rm app npm run db:indexes
 ```
 
@@ -100,7 +101,7 @@ Open WebUI — see the section above.
 Accounts and tool registrations live in a named volume:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
   -f docker/docker-compose.demo.yml down
 docker volume rm ragkb_open_webui_data
 ```

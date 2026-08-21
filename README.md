@@ -56,9 +56,11 @@ Two variables you must fill in:
 | `VOYAGE_API_KEY` | Required whenever `EMBEDDING_PROVIDER=voyage`, which is the default. Set `EMBEDDING_PROVIDER=fake` to run the whole stack with no key at all — the vectors are real, the semantics are crude, and it costs nothing. |
 | `MCP_AUTH_TOKEN` | Minimum 16 characters. Generate one with `openssl rand -hex 32`.                                                                                                                                                    |
 
-`MONGODB_URI` and `MONGODB_DB_NAME` matter only for the production stack; dev
-sets both for you. Everything else already has a working default. The full
-schema, including the cross-field rules, lives in `src/config/env.ts`.
+`MONGODB_DB_NAME` has a dev default. `MONGODB_URI` is set for you only when you
+include `docker-compose.db.yml`, which brings its own database; point it
+yourself when the database lives anywhere else. Everything else already has a
+working default. The full schema, including the cross-field rules, lives in
+`src/config/env.ts`.
 
 One compose subtlety worth knowing: `docker-compose.dev.yml` sets several
 variables in its `environment:` block, and an entry there beats `env_file`. Your
@@ -68,11 +70,14 @@ back to `dev-local-token-not-a-secret`, which is exactly as secure as it sounds.
 
 ### 2. Bring up the dev stack
 
-Pass **both** `-f` files; later overrides.
+Compose files stack, later overriding earlier. There are three, and the
+database is its own file so you can leave it out.
 
 ```bash
 docker compose --env-file .env \
-  -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up --build
+  -f docker/docker-compose.yml \
+  -f docker/docker-compose.dev.yml \
+  -f docker/docker-compose.db.yml up --build
 ```
 
 `--build` matters on a fresh clone: the app image (`ragkb-app`) is built locally
@@ -80,7 +85,42 @@ from `docker/Dockerfile` and never published to a registry, and some Compose
 versions try to pull a missing image instead of building it. Later runs reuse
 the build cache.
 
-That starts two services:
+**Already have a database?** Drop the `db` file and say where it is. This is the
+setup to use for a globally shared Atlas Local container, or for cloud Atlas:
+
+```bash
+MONGODB_URI='mongodb://host.docker.internal:27017/?directConnection=true' \
+  docker compose --env-file .env \
+    -f docker/docker-compose.yml \
+    -f docker/docker-compose.dev.yml up --build
+```
+
+Put that `MONGODB_URI` in `.env` instead and the plain two-file command works.
+`host.docker.internal` is how a container reaches a port published on the host;
+substitute the real host and port if yours differs. Only `docker-compose.db.yml`
+declares the `mongodb` service, so nothing else in the stack expects it to
+exist.
+
+**Sharing one Atlas Local across several projects.** If the shared database is a
+container on a shared docker network, have the app join that network and reach it
+by name rather than routing back out through a published port on the host — it is
+one hop shorter and does not depend on `host.docker.internal`, which needs extra
+setup on Linux. That wiring names things specific to your machine, so it lives in
+a gitignored override:
+
+```bash
+cp docker/docker-compose.local.yml.example docker/docker-compose.local.yml
+docker compose -f docker/docker-compose.yml \
+  -f docker/docker-compose.dev.yml \
+  -f docker/docker-compose.local.yml up --build
+```
+
+Use `docker-compose.db.yml` **or** `docker-compose.local.yml`, never both — each
+one supplies a database. Give the project its own `MONGODB_DB_NAME` on a shared
+instance: separation there is per-database, not per-container, so every attached
+project can read and write every other project's data.
+
+The full stack starts two services:
 
 - **`mongodb`** — `mongodb/mongodb-atlas-local:8.0` on `localhost:27017`. It
   runs `mongod` _and_ `mongot`, which is the whole reason `$search` and
@@ -96,7 +136,7 @@ replica set and starts `mongot`. The app waits for it.
 Do not skip this one. Search returns nothing until you run it.
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
   run --rm app npm run db:indexes
 ```
 
@@ -376,7 +416,7 @@ keeping them as code.
 from `docker/Dockerfile` and does not exist in any registry, but some Compose
 versions try to pull a missing image rather than build it. Pass `--build` (the
 commands above do), or run
-`docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml build`
+`docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml build`
 once and re-run `up`.
 
 **Search returns nothing, but I know I stored content.** Almost always one of

@@ -1,0 +1,109 @@
+# Atlas Local as part of this stack. An override, NOT usable on its own:
+#
+#   docker compose -f docker/docker-compose.yml \
+#     -f docker/docker-compose.dev.yml \
+#     -f docker/docker-compose.db.yml up
+#
+# Include this file when you want the compose stack to own its database. Omit it
+# when the database lives somewhere else — a globally shared Atlas Local
+# container, or cloud Atlas — and point `MONGODB_URI` there from `.env` or your
+# shell instead. Nothing in docker-compose.dev.yml references the `mongodb`
+# service, which is what makes leaving this file out work at all: a `depends_on`
+# naming a service that no file defines is a hard compose error, so that edge
+# lives HERE rather than in the dev override.
+#
+# This file may be passed before or after the dev override. It is the only file
+# that sets `MONGODB_URI` or declares a dependency on `mongodb`, so no merge
+# order between the two can change the result.
+
+services:
+  # -------------------------------------------------------------------------
+  # Atlas Local — mongod + mongot in one container, so $search and
+  # $vectorSearch behave exactly as they do in cloud Atlas.
+  # -------------------------------------------------------------------------
+  mongodb:
+    image: mongodb/mongodb-atlas-local:8.0
+    restart: unless-stopped
+
+    # BOTH OF THESE ARE LOAD-BEARING. `runner` initiates the replica set using
+    # the container's hostname, and persists that name into /data/db as the
+    # replica set name *and* its only member host. Docker defaults a container's
+    # hostname to the container ID, which changes every time the container is
+    # recreated — so with the bind mounts below, the second `up` starts a
+    # container that is not a member of the replica set it just loaded. It never
+    # elects a primary and never becomes healthy; the logs show NodeNotFound,
+    # "Locally stored replica set configuration", "No primary exists currently"
+    # and an endless stream of ReadConcernMajorityNotAvailableYet.
+    #
+    # Pinning the hostname keeps the stored config valid across recreation.
+    # Changing this value later invalidates the existing mongod/data/ the same
+    # way a container ID did — see docker/atlas-local/README.md.
+    container_name: ragkb-mongodb
+    hostname: ragkb-mongodb
+
+    ports:
+      # Published so host tooling (mongosh, Compass, `npm run db:indexes` from
+      # the host container) can reach the same instance the app uses.
+      #
+      # A globally shared Atlas Local almost certainly already holds 27017. Set
+      # MONGODB_HOST_PORT to something else if you want both at once, or just
+      # omit this file and use the one you already have.
+      - '${MONGODB_HOST_PORT:-27017}:27017'
+
+    volumes:
+      # Bind mounts rather than named volumes: the local knowledge base stays
+      # visible and inspectable on the host and survives `docker compose down -v`.
+      # Sources are relative to this file's directory (docker/). The full map
+      # lives in docker/atlas-local/README.md.
+      - ./atlas-local/mongod/data:/data/db
+      # /data/configdb also holds the single shared keyfile that `runner`
+      # generates on first boot and that both mongod and mongot authenticate
+      # with. Do NOT mount ./atlas-local/mongot/keyfile — it is documentation
+      # only, and a second, divergent keyfile breaks intra-cluster auth.
+      - ./atlas-local/mongod/conf:/data/configdb
+      # /data/mongot is NOT declared as a VOLUME by the image, so without this
+      # mount every MongoDB Search / Vector Search index is silently discarded the
+      # moment the container is recreated, and `npm run db:indexes` has to be
+      # re-run (and re-waited-on) from scratch.
+      - ./atlas-local/mongot/data:/data/mongot
+
+    # The image runs mongod as uid/gid 1000:1000, which matches the usual first
+    # host account, so the bind mounts above need no chown. If your host uid is
+    # not 1000 mongod cannot write and the container restart-loops — see
+    # docker/atlas-local/README.md for the fix.
+
+    healthcheck:
+      # The same command the image's own HEALTHCHECK uses, restated so these
+      # timings apply. First boot has to initialise a single-node replica set
+      # and start mongot, which takes 20-40s on a warm image and longer on a
+      # cold one; without a generous start_period the app's depend_on gives up
+      # before MongoDB was ever going to be reachable.
+      test: ['CMD', '/usr/local/bin/runner', 'healthcheck']
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 90s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  app:
+    depends_on:
+      mongodb:
+        condition: service_healthy
+
+    # Set here rather than in the dev override, and deliberately as `KEY=value`
+    # so it beats the base file's `env_file: ../.env`: when this file is in play
+    # the database on the compose network is the one to use, whatever .env says
+    # about some other deployment. Omit this file and MONGODB_URI falls back to
+    # .env or the shell, which is how an external Atlas Local or cloud Atlas is
+    # reached.
+    #
+    # directConnection=true because Atlas Local advertises its replica set
+    # member under the container's own hostname, which the driver cannot resolve
+    # from another container on the compose network.
+    environment:
+      - MONGODB_URI=mongodb://mongodb:27017/?directConnection=true

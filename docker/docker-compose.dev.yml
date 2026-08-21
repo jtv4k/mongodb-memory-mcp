@@ -1,80 +1,42 @@
-# Development override. It is NOT usable on its own — always pass both files:
+# Development override: the app as a bind-mounted watch process. It is NOT
+# usable on its own, and it deliberately contains NO database.
 #
-#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml up
+# With a database in the stack (the usual local setup):
 #
-# It adds Atlas Local and turns the app service into a bind-mounted watch
-# process. Only the differences from docker-compose.yml appear here.
+#   docker compose -f docker/docker-compose.yml \
+#     -f docker/docker-compose.dev.yml \
+#     -f docker/docker-compose.db.yml up
+#
+# Against a database that already exists elsewhere — a shared Atlas Local
+# container, or cloud Atlas — omit the db file and say where it is:
+#
+#   MONGODB_URI='mongodb://host.docker.internal:27017/?directConnection=true' \
+#     docker compose -f docker/docker-compose.yml \
+#       -f docker/docker-compose.dev.yml up
+#
+# (or put that line in ../.env, which the base file reads.)
+#
+# If the shared database is a container on a shared docker network, reaching it
+# by name beats going out through a published port on the host. That wiring is
+# machine-specific, so it lives in a gitignored override — copy
+# docker-compose.local.yml.example and read the notes in it:
+#
+#   docker compose -f docker/docker-compose.yml \
+#     -f docker/docker-compose.dev.yml \
+#     -f docker/docker-compose.local.yml up
+#
+# Use the db file OR the local override, never both: each supplies a database.
+#
+# WHY THIS FILE NAMES NO DATABASE. Compose rejects a `depends_on` pointing at a
+# service no file defines, so a dependency on `mongodb` here would make the db
+# file mandatory — exactly what splitting them was meant to avoid. Both the
+# dependency and the compose-network MONGODB_URI therefore live in
+# docker-compose.db.yml, next to the service they describe. Nothing here refers
+# to `mongodb` at all, and MONGODB_URI is left to .env or the shell.
+#
+# Only the differences from docker-compose.yml appear below.
 
 services:
-  # -------------------------------------------------------------------------
-  # Atlas Local — mongod + mongot in one container, so $search and
-  # $vectorSearch behave exactly as they do in cloud Atlas.
-  # -------------------------------------------------------------------------
-  mongodb:
-    image: mongodb/mongodb-atlas-local:8.0
-    restart: unless-stopped
-
-    # BOTH OF THESE ARE LOAD-BEARING. `runner` initiates the replica set using
-    # the container's hostname, and persists that name into /data/db as the
-    # replica set name *and* its only member host. Docker defaults a container's
-    # hostname to the container ID, which changes every time the container is
-    # recreated — so with the bind mounts below, the second `up` starts a
-    # container that is not a member of the replica set it just loaded. It never
-    # elects a primary and never becomes healthy; the logs show NodeNotFound,
-    # "Locally stored replica set configuration", "No primary exists currently"
-    # and an endless stream of ReadConcernMajorityNotAvailableYet.
-    #
-    # Pinning the hostname keeps the stored config valid across recreation.
-    # Changing this value later invalidates the existing mongod/data/ the same
-    # way a container ID did — see docker/atlas-local/README.md.
-    container_name: ragkb-mongodb
-    hostname: ragkb-mongodb
-
-    ports:
-      # Published so host tooling (mongosh, Compass, `npm run db:indexes` from
-      # the host container) can reach the same instance the app uses.
-      - '${MONGODB_HOST_PORT:-27017}:27017'
-
-    volumes:
-      # Bind mounts rather than named volumes: the local knowledge base stays
-      # visible and inspectable on the host and survives `docker compose down -v`.
-      # Sources are relative to this file's directory (docker/). The full map
-      # lives in docker/atlas-local/README.md.
-      - ./atlas-local/mongod/data:/data/db
-      # /data/configdb also holds the single shared keyfile that `runner`
-      # generates on first boot and that both mongod and mongot authenticate
-      # with. Do NOT mount ./atlas-local/mongot/keyfile — it is documentation
-      # only, and a second, divergent keyfile breaks intra-cluster auth.
-      - ./atlas-local/mongod/conf:/data/configdb
-      # /data/mongot is NOT declared as a VOLUME by the image, so without this
-      # mount every MongoDB Search / Vector Search index is silently discarded the
-      # moment the container is recreated, and `npm run db:indexes` has to be
-      # re-run (and re-waited-on) from scratch.
-      - ./atlas-local/mongot/data:/data/mongot
-
-    # The image runs mongod as uid/gid 1000:1000, which matches the usual first
-    # host account, so the bind mounts above need no chown. If your host uid is
-    # not 1000 mongod cannot write and the container restart-loops — see
-    # docker/atlas-local/README.md for the fix.
-
-    healthcheck:
-      # The same command the image's own HEALTHCHECK uses, restated so these
-      # timings apply. First boot has to initialise a single-node replica set
-      # and start mongot, which takes 20-40s on a warm image and longer on a
-      # cold one; without a generous start_period the app's depend_on gives up
-      # before MongoDB was ever going to be reachable.
-      test: ['CMD', '/usr/local/bin/runner', 'healthcheck']
-      interval: 10s
-      timeout: 10s
-      retries: 12
-      start_period: 90s
-
-    logging:
-      driver: json-file
-      options:
-        max-size: '10m'
-        max-file: '3'
-
   app:
     build:
       target: dev
@@ -82,9 +44,10 @@ services:
         NODE_ENV: development
     # Tagged separately so a dev build never overwrites the production tag.
     image: ragkb-app:dev
-    # Static for the same reason as mongodb above: a stable name to exec into
-    # and a stable hostname in the logs. The app holds no persistent state
-    # keyed by hostname, so this one is convenience rather than correctness.
+    # A stable name to exec into and a stable hostname in the logs. The app
+    # holds no persistent state keyed by hostname, so this is convenience
+    # rather than correctness — unlike the db container, where it is
+    # load-bearing.
     container_name: ragkb-app-dev
     hostname: ragkb-app-dev
     command: ['npm', 'run', 'dev']
@@ -93,25 +56,20 @@ services:
     # not watch it scroll past in a restart loop.
     restart: 'no'
 
-    depends_on:
-      mongodb:
-        condition: service_healthy
-
     # NOTE ON PRECEDENCE: entries written as `KEY=value` here beat anything in
-    # the base file's `env_file: ../.env`. That is deliberate for MONGODB_URI
-    # (dev's database lives on the compose network, not wherever .env points),
-    # but it does mean MONGODB_DB_NAME, LOG_LEVEL and MCP_AUTH_TOKEN must be
-    # overridden from the shell or via `--env-file`, not from ../.env. The
-    # defaults below exist so `up` works on a clean checkout with no .env at all.
+    # the base file's `env_file: ../.env`, so MONGODB_DB_NAME, LOG_LEVEL and
+    # MCP_AUTH_TOKEN must be overridden from the shell or via `--env-file`
+    # rather than from ../.env. The defaults exist so `up` works on a clean
+    # checkout with no .env at all.
+    #
+    # MONGODB_URI is conspicuously absent: it is the one setting that depends on
+    # where the database actually is, so it comes from .env or the shell, or
+    # from docker-compose.db.yml when that file supplies the database itself.
     environment:
       - NODE_ENV=development
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       # Human-readable pino output via pino-pretty; production stays NDJSON.
       - LOG_PRETTY=true
-      # directConnection=true because Atlas Local advertises its replica set
-      # member under the container's own hostname, which the driver cannot
-      # resolve from another container on the compose network.
-      - MONGODB_URI=mongodb://mongodb:27017/?directConnection=true
       - MONGODB_DB_NAME=${MONGODB_DB_NAME:-rag_kb_dev}
       # Obviously-not-a-secret default so `up` works on a clean checkout with no
       # .env; zod only requires >= 16 characters. Override it for anything that

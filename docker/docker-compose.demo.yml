@@ -1,11 +1,15 @@
 # Demo override: Open WebUI as an AI client for this knowledge base.
 #
-# It is an override and is NOT usable alone. Pass all three files, in order:
+# It is an override and is NOT usable alone. Pass every file, in order:
 #
 #   docker compose --env-file .env \
 #     -f docker/docker-compose.yml \
 #     -f docker/docker-compose.dev.yml \
+#     -f docker/docker-compose.db.yml \
 #     -f docker/docker-compose.demo.yml up
+#
+# Drop the db file if the database it should talk to already exists elsewhere,
+# and set MONGODB_URI to point at it.
 #
 # WHY THERE IS A PROXY IN HERE. Open WebUI does not speak MCP. It calls
 # "tool servers", which are plain OpenAPI/REST services. Our server speaks MCP

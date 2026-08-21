@@ -6,7 +6,7 @@
 # `npm install`, before docker-compose has a usable image). For day-to-day work
 # prefer:
 #
-#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml \
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
 #     run --rm app <cmd>
 #
 # Usage:

@@ -39,7 +39,7 @@ container recreation unless it is mounted. That is why it is mounted here.
 ## The replica set is named after the container hostname
 
 This is the one that will bite you on the second `up`, and it is the reason
-`docker-compose.dev.yml` pins `hostname: ragkb-mongodb`.
+`docker-compose.db.yml` pins `hostname: ragkb-mongodb`.
 
 `runner` initiates the single-node replica set using the container's hostname,
 then persists that name into `mongod/data/` as both the replica set name and the
@@ -128,7 +128,7 @@ after changing `hostname:`, or to recover a knowledge base created before that
 setting existed:
 
 ```bash
-docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml down
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml down
 rm -rf docker/atlas-local/mongod/data/* docker/atlas-local/mongot/data/*
 rm -f  docker/atlas-local/mongod/conf/keyfile
 ```

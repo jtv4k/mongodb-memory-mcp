@@ -39,6 +39,9 @@ compose=(docker compose)
 compose+=(
   -f docker/docker-compose.yml
   -f docker/docker-compose.dev.yml
+  # The demo stack brings its own database. Drop this line and set MONGODB_URI
+  # to run the demo against an Atlas Local that already exists elsewhere.
+  -f docker/docker-compose.db.yml
   -f docker/docker-compose.demo.yml
 )
 

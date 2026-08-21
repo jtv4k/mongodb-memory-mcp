@@ -2,7 +2,8 @@
 #
 # MONGODB_URI is expected to point at **cloud Atlas** (mongodb+srv://...). There
 # is no database service in this file because production does not run one — see
-# docker-compose.dev.yml for the Atlas Local container used by dev and CI.
+# docker-compose.db.yml for the Atlas Local container used by dev and CI, which
+# is a separate override precisely so it can be left out.
 #
 #   docker compose -f docker/docker-compose.yml up -d --build
 #
