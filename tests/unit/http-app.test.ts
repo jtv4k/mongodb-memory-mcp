@@ -29,7 +29,7 @@ import type { AddressInfo } from 'node:net';
 
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { createApp, type AppBundle } from '../../src/app.js';
+import { createApp, isAuditedSurface, type AppBundle } from '../../src/app.js';
 import { loadConfig, type AppConfig } from '../../src/config/env.js';
 import type { MongoConnection } from '../../src/db/client.js';
 import type { EmbeddingProvider, EmbeddingProviderInfo } from '../../src/embeddings/provider.js';
@@ -934,6 +934,43 @@ describe('pre-auth body handling', () => {
 // ---------------------------------------------------------------------------
 // Error payloads do not leak
 // ---------------------------------------------------------------------------
+
+describe('which successful requests reach the access log at info', () => {
+  // A successful /api or /mcp call is the audit trail — who ingested what, and
+  // when. A successful page view is noise. Everything here is about that line.
+  it.each(['/api', '/api/content', '/api/search?q=secret+term', '/mcp', '/mcp/'])(
+    'audits %s',
+    (url) => {
+      expect(isAuditedSurface(url, '/mcp')).toBe(true);
+    },
+  );
+
+  it.each(['/search?q=x', '/documents', '/readyz', '/css/app.css', '/', ''])(
+    'does not audit %j',
+    (url) => {
+      expect(isAuditedSurface(url, '/mcp')).toBe(false);
+    },
+  );
+
+  it('requires a segment boundary, so a page route cannot pass by prefix', () => {
+    expect(isAuditedSurface('/api-docs', '/mcp')).toBe(false);
+    expect(isAuditedSurface('/mcp-console', '/mcp')).toBe(false);
+  });
+
+  it('honours a relocated MCP path', () => {
+    expect(isAuditedSurface('/rag/mcp', '/rag/mcp')).toBe(true);
+    expect(isAuditedSurface('/mcp', '/rag/mcp')).toBe(false);
+  });
+
+  it('ignores the query string entirely', () => {
+    // The level must not depend on what somebody searched for.
+    expect(isAuditedSurface('/documents?q=/api', '/mcp')).toBe(false);
+  });
+
+  it('treats a missing url as not audited', () => {
+    expect(isAuditedSurface(undefined, '/mcp')).toBe(false);
+  });
+});
 
 describe('error payload hygiene', () => {
   it('replaces an unexpected error message with a generic one', async () => {

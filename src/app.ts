@@ -138,15 +138,28 @@ export function createApp(deps: CreateAppDeps): AppBundle {
     pinoHttp({
       logger,
       genReqId: (req) => getRequestId(req),
-      // Liveness is polled every few seconds forever and says nothing when it
-      // succeeds. Readiness is demoted rather than dropped (see customLogLevel)
-      // because a 503 there is genuinely interesting.
-      autoLogging: { ignore: (req) => req.url?.startsWith('/healthz') === true },
+      // Dropped entirely: liveness is polled every few seconds forever and says
+      // nothing when it succeeds, and a stylesheet request is one more line per
+      // page view that no one has ever needed. Readiness is demoted rather than
+      // dropped (see customLogLevel) because a 503 there is genuinely
+      // interesting.
+      autoLogging: {
+        ignore: (req) =>
+          req.url?.startsWith('/healthz') === true || req.url?.startsWith('/css/') === true,
+      },
+      // A successful request logs at info only on the surfaces that CHANGE or
+      // EXPOSE the knowledge base — `/api` and `/mcp`. Those are the ones an
+      // operator later needs to reconstruct: who ingested what, and when.
+      //
+      // A successful page view or readiness probe drops to debug. Rendering
+      // `/search` tells nobody anything the response status did not, and one
+      // browser navigation is several requests, so at the default LOG_LEVEL
+      // those would bury the lines that matter. `LOG_LEVEL=debug` brings the
+      // full access log back for tracing traffic.
       customLogLevel: (req, res, error) => {
         if (error || res.statusCode >= 500) return 'error';
         if (res.statusCode >= 400) return 'warn';
-        if (req.url?.startsWith('/readyz') === true) return 'debug';
-        return 'info';
+        return isAuditedSurface(req.url, config.mcp.path) ? 'info' : 'debug';
       },
       // Raw request in, hand-picked fields out: no headers (the token lives in
       // one), and above all no body — ingested documents are megabytes of
@@ -221,4 +234,19 @@ export function createApp(deps: CreateAppDeps): AppBundle {
       await mcp.closeAll();
     },
   };
+}
+
+/**
+ * Whether a successful request on this URL is worth an access-log line.
+ *
+ * True for the two authenticated surfaces that read and write the knowledge
+ * base; false for the pages and the health probes. Matching is on the path
+ * only — `req.url` carries the query string, and a search term has no business
+ * deciding a log level — and requires a segment boundary so a page route like
+ * `/api-docs` cannot pass by prefix.
+ */
+export function isAuditedSurface(url: string | undefined, mcpPath: string): boolean {
+  if (!url) return false;
+  const path = url.split('?')[0] ?? '';
+  return ['/api', mcpPath].some((base) => path === base || path.startsWith(`${base}/`));
 }
