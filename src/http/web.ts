@@ -72,18 +72,22 @@ const SEARCH_LIMITS = [10, 25, 50] as const;
 const DOCUMENTS_PAGE_SIZE = 20;
 
 /**
- * The two readings of one document, and the order they are offered in.
+ * The three readings of one document, in the order they are offered.
  *
- * `chunks` stays the default because it is what the retrieval side actually
- * searches — the full text is the source, but the chunks are the artefact.
+ * `full` leads and is the default: someone opening a document usually wants to
+ * read it. The chunks are a derived artefact — how retrieval sees the text — and
+ * `details` is the provenance nobody needs until they are debugging, so it sits
+ * last rather than pushing the content down the page.
+ *
  * The choice rides in the query string rather than in a script: with
  * `default-src 'none'` and no client JavaScript, a tab has to be a link, which
  * has the side benefit of making each reading independently bookmarkable and
  * survivable across a reload.
  */
 const DOCUMENT_TABS = [
-  { value: 'chunks', label: 'Chunks' },
   { value: 'full', label: 'Full document' },
+  { value: 'chunks', label: 'Chunks' },
+  { value: 'details', label: 'Details' },
 ] as const;
 
 type DocumentTab = (typeof DOCUMENT_TABS)[number]['value'];
@@ -562,7 +566,7 @@ function asMode(value: string | undefined): '' | SearchMode {
 
 /** Anything unrecognised falls back to the default tab rather than 404ing. */
 function asDocumentTab(value: string | undefined): DocumentTab {
-  return DOCUMENT_TABS.some((tab) => tab.value === value) ? (value as DocumentTab) : 'chunks';
+  return DOCUMENT_TABS.some((tab) => tab.value === value) ? (value as DocumentTab) : 'full';
 }
 
 /** Only the offered page sizes are honoured; anything else is the default. */

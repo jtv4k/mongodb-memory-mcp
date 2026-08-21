@@ -588,59 +588,93 @@ describe('web UI', () => {
     expect(firstArgument(app.service.listDocuments)).toMatchObject({ offset: 20, tag: 'notes' });
   });
 
-  it('renders a document with its chunks and embedding provenance', async () => {
+  it('renders a document and resolves it by the identifier in the URL', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 
     const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
 
     expect(html).toContain('Release notes');
-    expect(html).toContain('voyage-context-3');
-    expect(html).toContain('chunk zero body');
     expect(app.service.getDocument).toHaveBeenCalledWith('notes/release', expect.anything());
   });
 
-  it('defaults to the chunk view and offers a link to the full document', async () => {
+  it('defaults to the full document, and links to the other two views', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 
     const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
 
+    expect(html).toContain('the whole document body, verbatim');
+    expect(html).not.toContain('chunk zero body');
+    // Tab links preserve whichever identifier was used to reach the page.
+    expect(html).toContain('/documents/notes%2Frelease?view=chunks');
+    expect(html).toContain('/documents/notes%2Frelease?view=details');
+  });
+
+  it('renders the chunk list when the chunks tab is selected', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=chunks`)).text();
+
     expect(html).toContain('chunk zero body');
     expect(html).not.toContain('the whole document body, verbatim');
-    // The tab link preserves whichever identifier was used to reach the page.
     expect(html).toContain('/documents/notes%2Frelease?view=full');
   });
 
-  it('renders the full document body when the full tab is selected', async () => {
-    app.service.getDocument.mockResolvedValue(documentDetail());
+  it('shows provenance, chunking, ingest, identity and metadata only on the details tab', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail({ metadata: { team: 'devrel' } }));
 
-    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full`)).text();
+    const details = await (
+      await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=details`)
+    ).text();
 
-    expect(html).toContain('the whole document body, verbatim');
-    expect(html).not.toContain('chunk zero body');
-    expect(html).toContain('/documents/notes%2Frelease?view=chunks');
+    expect(details).toContain('Embedding provenance');
+    expect(details).toContain('voyage-context-3');
+    expect(details).toContain('Chunking');
+    expect(details).toContain('Ingest');
+    expect(details).toContain('Identity');
+    expect(details).toContain('Metadata');
+    expect(details).toContain('devrel');
+    // The details panel carries no document body of either kind.
+    expect(details).not.toContain('the whole document body, verbatim');
+    expect(details).not.toContain('chunk zero body');
+
+    // And it stays out of the way of the reading views.
+    const full = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+    expect(full).not.toContain('Embedding provenance');
+    expect(full).not.toContain('Identity');
   });
 
   it('marks only the selected tab as current', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 
-    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=full`)).text();
+    const html = await (
+      await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=details`)
+    ).text();
 
     // Scoped to the tab strip: the header nav marks its own active item too.
     const tabStrip = html.slice(html.indexOf('aria-label="Document content views"'));
     const current = tabStrip.match(/aria-current="page"/gu) ?? [];
     expect(current).toHaveLength(1);
-    // The marker belongs to the Full document link, not the Chunks one.
-    expect(tabStrip).toMatch(/aria-current="page"[\s\S]*?>\s*Full document/u);
+    expect(tabStrip).toMatch(/aria-current="page"[\s\S]*?>\s*Details/u);
   });
 
-  it('falls back to the chunk view for an unrecognised tab rather than failing', async () => {
+  it('offers the tabs in reading order: full document, chunks, then details', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+    const tabStrip = html.slice(html.indexOf('aria-label="Document content views"'));
+
+    expect(tabStrip.indexOf('Full document')).toBeLessThan(tabStrip.indexOf('Chunks'));
+    expect(tabStrip.indexOf('Chunks')).toBeLessThan(tabStrip.indexOf('Details'));
+  });
+
+  it('falls back to the full document for an unrecognised tab rather than failing', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 
     const response = await fetch(`${app.baseUrl}/documents/notes%2Frelease?view=nonsense`);
     const html = await response.text();
 
     expect(response.status).toBe(200);
-    expect(html).toContain('chunk zero body');
+    expect(html).toContain('the whole document body, verbatim');
   });
 
   it('escapes hostile document content in the full view', async () => {
