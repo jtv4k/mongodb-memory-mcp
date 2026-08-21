@@ -53,6 +53,7 @@ describe('loadConfig — happy path', () => {
       MONGODB_TEXT_INDEX_NAME: 'txt',
       MONGODB_DOCUMENTS_TEXT_INDEX_NAME: 'doc_txt',
       MONGODB_INDEX_READY_TIMEOUT_MS: '120000',
+      MONGODB_AUTO_INDEXES: 'false',
       EMBEDDING_PROVIDER: 'voyage',
       EMBEDDING_MODEL: 'voyage-context-3',
       EMBEDDING_DIMENSIONS: '512',
@@ -105,6 +106,7 @@ describe('loadConfig — happy path', () => {
         textIndexName: 'txt',
         documentsTextIndexName: 'doc_txt',
         indexReadyTimeoutMs: 120000,
+        autoIndexes: false,
       },
       embedding: {
         provider: 'voyage',
@@ -160,6 +162,8 @@ describe('loadConfig — happy path', () => {
       textIndexName: 'chunks_text_index',
       documentsTextIndexName: 'documents_text_index',
       indexReadyTimeoutMs: 300_000,
+      // On by default: a fresh deployment should become searchable by itself.
+      autoIndexes: true,
     });
     expect(config.embedding).toMatchObject({
       provider: 'voyage',
@@ -250,6 +254,25 @@ describe('boolean coercion', () => {
   it('falls back to the default for an empty string', () => {
     expect(loadConfig(minimalEnv({ SEARCH_HYBRID_ENABLED: '' })).search.hybridEnabled).toBe(true);
     expect(loadConfig(minimalEnv({ LOG_PRETTY: '' })).logging.pretty).toBe(false);
+    expect(loadConfig(minimalEnv({ MONGODB_AUTO_INDEXES: '' })).mongo.autoIndexes).toBe(true);
+  });
+
+  it.each([
+    ['false', false],
+    ['off', false],
+    ['0', false],
+    ['no', false],
+    ['true', true],
+    ['1', true],
+  ])('reads MONGODB_AUTO_INDEXES=%s as %s', (raw, expected) => {
+    expect(loadConfig(minimalEnv({ MONGODB_AUTO_INDEXES: raw })).mongo.autoIndexes).toBe(expected);
+  });
+
+  it('rejects a MONGODB_AUTO_INDEXES value that is not recognisably boolean', () => {
+    // Naming the variable matters: silently defaulting to true would apply
+    // index changes on a deployment whose operator meant to opt out.
+    const error = expectConfigError(minimalEnv({ MONGODB_AUTO_INDEXES: 'maybe' }));
+    expect(error.message).toContain('MONGODB_AUTO_INDEXES');
   });
 
   it('rejects anything that is not recognisably boolean', () => {

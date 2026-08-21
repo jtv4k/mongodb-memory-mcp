@@ -154,6 +154,13 @@ export const envSchema = z
     MONGODB_DOCUMENTS_TEXT_INDEX_NAME: z.string().min(1).default('documents_text_index'),
     /** How long `db:indexes` waits for MongoDB Search indexes to become queryable. */
     MONGODB_INDEX_READY_TIMEOUT_MS: positiveInt.default(300_000),
+    /**
+     * Apply the index definitions during startup, so a fresh deployment is
+     * searchable without a separate `db:indexes` run. Set false where the
+     * application's database user is not the one allowed to manage indexes, or
+     * where a deploy pipeline runs the migration as its own auditable step.
+     */
+    MONGODB_AUTO_INDEXES: boolFromEnv(true),
 
     // ---- embeddings --------------------------------------------------------
     EMBEDDING_PROVIDER: z.enum(['voyage', 'fake']).default('voyage'),
@@ -328,6 +335,8 @@ export interface MongoConfig {
   textIndexName: string;
   documentsTextIndexName: string;
   indexReadyTimeoutMs: number;
+  /** Apply the index definitions at startup rather than only via `db:indexes`. */
+  autoIndexes: boolean;
 }
 
 export interface EmbeddingConfig {
@@ -409,6 +418,7 @@ export function buildConfig(env: Env): AppConfig {
       textIndexName: env.MONGODB_TEXT_INDEX_NAME,
       documentsTextIndexName: env.MONGODB_DOCUMENTS_TEXT_INDEX_NAME,
       indexReadyTimeoutMs: env.MONGODB_INDEX_READY_TIMEOUT_MS,
+      autoIndexes: env.MONGODB_AUTO_INDEXES,
     },
     embedding: {
       provider: env.EMBEDDING_PROVIDER,

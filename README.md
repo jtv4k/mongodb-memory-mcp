@@ -133,12 +133,27 @@ replica set and starts `mongot`. The app waits for it.
 
 ### 3. Apply the index definitions
 
-Do not skip this one. Search returns nothing until you run it.
+**The server does this for you at startup**, so on a normal first run you can
+skip straight to the UI — give the search indexes a minute to build. To apply
+them yourself, or to see what changed:
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \
   run --rm app npm run db:indexes
 ```
+
+Startup applies the definitions but deliberately does **not** wait for the search
+indexes to become queryable — a build takes tens of seconds and blocking on it
+would turn a fast boot into a slow one. `/readyz` reports when the vector index
+is usable, and `/search` warns until then. Nor does it fail the process if the
+migration cannot run: the app's database user may not be allowed to manage
+indexes, and a restart loop would not fix that.
+
+Set `MONGODB_AUTO_INDEXES=false` to turn the startup attempt off entirely — the
+right choice when a deploy pipeline owns the migration as its own auditable step,
+or when the application connects with a user that has no index-management rights.
+`npm run db:indexes` remains the way to apply them deliberately, and the only way
+to _wait_ for them.
 
 The definitions live in `src/db/index-definitions/*.json` and are applied as
 code — never by hand in the Atlas UI, because the UI is not the source of truth

@@ -404,7 +404,8 @@ pino, one JSON object per line to stdout. `LOG_PRETTY=true` swaps in
 
   Other stable events worth knowing: `mongo.connected`,
   `embedding.provider_selected`, `index.created` / `index.updated` /
-  `index.unchanged` / `index.dimension_override` / `index.setup_complete`,
+  `index.unchanged` / `index.dimension_override` / `index.setup_complete` /
+  `index.auto_applied` / `index.auto_disabled` / `index.auto_failed`,
   `ingest.unchanged`, `ingest.repair`, `ingest.transaction_unavailable`,
   `search.text_index_unavailable`, `content.deleted`, `reembed.dry_run`,
   `reembed.completed`, `mcp.tool_succeeded`, `mcp.tool_failed`,
@@ -467,7 +468,10 @@ docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f 
 First boot of Atlas Local takes 20–40s (replica-set init + `mongot` start); the
 healthcheck allows 90s. The app waits on `service_healthy`.
 
-Apply the index definitions into the running stack:
+The server applies the index definitions itself at startup (the same
+`ensureIndexes` call, `waitForQueryable: false`, failures logged not fatal) unless
+`MONGODB_AUTO_INDEXES=false`. Run it explicitly when you want to _wait_ for the
+build, see the plan, or when auto-apply is off:
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.dev.yml -f docker/docker-compose.db.yml \

@@ -12,13 +12,19 @@
  * and the audience for "MCP_AUTH_TOKEN: must be at least 16 characters" is a
  * human staring at `docker logs`.
  *
- * ## Startup is allowed to succeed without a vector index
+ * ## Startup applies the index definitions, and is allowed to succeed without them
  *
- * A brand-new deployment has an empty database and no MongoDB Search indexes; the
- * indexes are created by `npm run db:indexes`, which usually runs *after* the
- * container is up. Crashing on a missing index would make that impossible and
- * would put the container in a restart loop that no amount of retrying can fix.
- * So the check is a loud WARNING and nothing more.
+ * A brand-new deployment has an empty database and no MongoDB Search indexes, so
+ * startup runs the same `ensureIndexes` migration `npm run db:indexes` runs
+ * (unless `MONGODB_AUTO_INDEXES=false`). That is a convenience, never a
+ * guarantee: submitting a search index is not the same as it being queryable,
+ * and the database user may not be allowed to manage indexes at all.
+ *
+ * So neither the setup nor the readiness check can end the process. Crashing on
+ * a missing index would put the container in a restart loop that no amount of
+ * retrying can fix — the index build finishes on its own schedule, and a
+ * permissions problem never resolves by trying again. Both steps log loudly and
+ * return.
  *
  * ## Ownership on shutdown
  *
@@ -35,7 +41,7 @@ import { createApp } from './app.js';
 import { loadConfig, type AppConfig } from './config/env.js';
 import { connectMongo, type MongoConnection } from './db/client.js';
 import { COLLECTIONS } from './db/collections.js';
-import { searchIndexIsQueryable } from './db/indexes.js';
+import { ensureIndexes, searchIndexIsQueryable } from './db/indexes.js';
 import { createEmbeddingProvider } from './embeddings/factory.js';
 import { describeError, isAppError } from './errors.js';
 import { createLogger, logAppError, type Logger } from './logger.js';
@@ -65,8 +71,11 @@ async function main(): Promise<void> {
     printMcpClientSetupHint(config);
   }
 
-  // After `listen`, deliberately: the probe is a round trip to mongot and there
-  // is no reason to delay accepting traffic (or a health check) behind it.
+  // After `listen`, deliberately: both of these are round trips to mongot and
+  // there is no reason to delay accepting traffic (or a health check) behind
+  // them. Applying the definitions first means the readiness probe below reports
+  // on the indexes this process just submitted.
+  await ensureIndexesUnlessDisabled(connection, config, logger);
   await warnUnlessVectorIndexReady(connection, config, logger);
 }
 
@@ -117,6 +126,7 @@ function describeConfig(config: AppConfig): Record<string, unknown> {
       vectorIndexName: config.mongo.vectorIndexName,
       textIndexName: config.mongo.textIndexName,
       documentsTextIndexName: config.mongo.documentsTextIndexName,
+      autoIndexes: config.mongo.autoIndexes,
     },
     embedding: {
       provider: config.embedding.provider,
@@ -203,6 +213,69 @@ function printMcpClientSetupHint(config: AppConfig): void {
       '',
     ].join('\n'),
   );
+}
+
+/**
+ * Apply the index definitions on the way up, unless `MONGODB_AUTO_INDEXES=false`.
+ *
+ * `ensureIndexes` is the same function `npm run db:indexes` calls, and it is
+ * idempotent: an index that already matches its checked-in definition is
+ * reported `unchanged` and not rewritten. So this is not "create if missing"
+ * logic reimplemented here — it is the existing migration, run at the one moment
+ * we know the database is reachable and the process is about to serve traffic.
+ * A deployment therefore becomes searchable on its own instead of silently
+ * answering every query with nothing until somebody remembers the extra step.
+ *
+ * TWO DELIBERATE LIMITS.
+ *
+ * It does not wait for the indexes to become queryable. A fresh MongoDB Search
+ * build takes tens of seconds and blocking on it would turn a fast boot into a
+ * slow one for no gain — `/readyz` and the warning below already report build
+ * progress, and search degrades gracefully in the meantime.
+ *
+ * It never throws. The application's database user may legitimately lack
+ * index-management rights (a read-only replica, a locked-down Atlas project, a
+ * pipeline that owns migrations as its own auditable step). Failing hard there
+ * would put the container in a restart loop that no retry can fix, for a
+ * condition the operator chose. The failure is logged at error and the server
+ * carries on — same stance as the missing-index warning below, and the reason
+ * `MONGODB_AUTO_INDEXES` exists to turn the attempt off cleanly.
+ */
+async function ensureIndexesUnlessDisabled(
+  connection: MongoConnection,
+  config: AppConfig,
+  logger: Logger,
+): Promise<void> {
+  if (!config.mongo.autoIndexes) {
+    logger.info(
+      { event: 'index.auto_disabled' },
+      'MONGODB_AUTO_INDEXES=false — skipping index setup; run "npm run db:indexes" to apply it',
+    );
+    return;
+  }
+
+  try {
+    const result = await ensureIndexes(connection.db, config, logger, {
+      waitForQueryable: false,
+    });
+
+    const changed = result.search.filter((outcome) => outcome.action !== 'unchanged');
+    logger.info(
+      {
+        event: 'index.auto_applied',
+        standard: result.standard.length,
+        search: result.search.length,
+        changed: changed.map((outcome) => `${outcome.name}:${outcome.action}`),
+      },
+      changed.length === 0
+        ? 'index definitions already up to date'
+        : `applied ${changed.length} search index change(s) at startup`,
+    );
+  } catch (error) {
+    logAppError(logger, error, 'startup index setup failed — continuing without it', {
+      event: 'index.auto_failed',
+    });
+  }
 }
 
 /** Loud, non-fatal warning when `$vectorSearch` has nothing to search. */

@@ -63,6 +63,10 @@ services:
       - MONGODB_VECTOR_INDEX_NAME
       - MONGODB_TEXT_INDEX_NAME
       - MONGODB_DOCUMENTS_TEXT_INDEX_NAME
+      - MONGODB_INDEX_READY_TIMEOUT_MS
+      # Set false where a deploy pipeline owns the index migration, or where the
+      # app's database user may not manage indexes.
+      - MONGODB_AUTO_INDEXES
       - EMBEDDING_PROVIDER
       - EMBEDDING_MODEL
       - EMBEDDING_DIMENSIONS
