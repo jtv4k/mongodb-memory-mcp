@@ -764,6 +764,80 @@ describe('web UI', () => {
   });
 });
 
+describe('base path (X-Forwarded-Prefix)', () => {
+  it('ignores the header when TRUST_PROXY is not configured', async () => {
+    const response = await fetch(`${app.baseUrl}/`, {
+      redirect: 'manual',
+      headers: { 'x-forwarded-prefix': '/kb' },
+    });
+
+    expect(response.headers.get('location')).toBe('/search');
+
+    const html = await (
+      await fetch(`${app.baseUrl}/search`, { headers: { 'x-forwarded-prefix': '/kb' } })
+    ).text();
+    expect(html).toContain('href="/css/app.css"');
+    expect(html).not.toContain('/kb');
+  });
+
+  describe('with TRUST_PROXY configured', () => {
+    let proxied: Harness;
+
+    beforeEach(async () => {
+      proxied = await startApp({ env: { TRUST_PROXY: '1' } });
+    });
+
+    it('prefixes the "/" redirect', async () => {
+      const response = await fetch(`${proxied.baseUrl}/`, {
+        redirect: 'manual',
+        headers: { 'x-forwarded-prefix': '/kb' },
+      });
+
+      expect(response.headers.get('location')).toBe('/kb/search');
+    });
+
+    it('prefixes stylesheet, nav, form and pagination links', async () => {
+      proxied.service.listDocuments.mockResolvedValue({
+        documents: [documentRow()],
+        total: 45,
+        limit: 20,
+        offset: 20,
+      });
+
+      const html = await (
+        await fetch(`${proxied.baseUrl}/documents?offset=20`, {
+          headers: { 'x-forwarded-prefix': '/kb' },
+        })
+      ).text();
+
+      expect(html).toContain('href="/kb/css/app.css"');
+      expect(html).toContain('href="/kb/search"');
+      expect(html).toContain('action="/kb/documents"');
+      expect(html).toContain('/kb/documents/');
+      expect(html).toContain('/kb/documents?offset=0');
+      expect(html).toContain('/kb/documents?offset=40');
+    });
+
+    it('falls back to no prefix when the header is absent', async () => {
+      const response = await fetch(`${proxied.baseUrl}/`, { redirect: 'manual' });
+
+      expect(response.headers.get('location')).toBe('/search');
+    });
+
+    it.each(['//evil.com', '/kb/<script>', '/kb/..', 'not-a-path'])(
+      'rejects a malformed header value: %s',
+      async (value) => {
+        const response = await fetch(`${proxied.baseUrl}/`, {
+          redirect: 'manual',
+          headers: { 'x-forwarded-prefix': value },
+        });
+
+        expect(response.headers.get('location')).toBe('/search');
+      },
+    );
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Fixtures
 // ---------------------------------------------------------------------------

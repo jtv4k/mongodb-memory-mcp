@@ -50,6 +50,7 @@ import { buildHighlightFragments, renderFragmentsHtml } from '../services/highli
 import { renderMarkdown } from '../services/markdown.js';
 import type { KnowledgeService } from '../services/types.js';
 
+import { getBasePath } from './base-path.js';
 import { createRequestContext, getRequestId } from './request-id.js';
 
 /**
@@ -135,7 +136,7 @@ export function createWebRouter(deps: WebDeps): Router {
 
   // The knowledge base is a search tool first, so "/" is the search page.
   router.get('/', (_req, res) => {
-    res.redirect(302, '/search');
+    res.redirect(302, `${getBasePath(res)}/search`);
   });
 
   router.get(
@@ -190,7 +191,7 @@ export function createWebRouter(deps: WebDeps): Router {
         res.render('layout', {
           ...base,
           title: `${form.q} — search`,
-          results: toResultsView(result),
+          results: toResultsView(result, getBasePath(res)),
           searchError: null,
         });
       } catch (error) {
@@ -231,14 +232,21 @@ export function createWebRouter(deps: WebDeps): Router {
 
       const result = await service.listDocuments(input, context(req, res));
       const carry = { q: search, tag };
+      const basePath = getBasePath(res);
 
       res.render('layout', {
         view: 'documents',
         activeNav: 'documents',
         title: 'Documents',
         form: { q: search, tag },
-        documents: result.documents.map(toDocumentRow),
-        pagination: toPagination('/documents', carry, result.total, result.limit, result.offset),
+        documents: result.documents.map((row) => toDocumentRow(row, basePath)),
+        pagination: toPagination(
+          `${basePath}/documents`,
+          carry,
+          result.total,
+          result.limit,
+          result.offset,
+        ),
       });
     }),
   );
@@ -263,6 +271,7 @@ export function createWebRouter(deps: WebDeps): Router {
       // gate rather than a guess at the body.
       const raw = firstString(req.query.raw) === '1';
       const markdown = detail.document.contentType === 'markdown';
+      const path = `${getBasePath(res)}${req.path}`;
 
       res.render('layout', {
         view: 'document',
@@ -279,7 +288,7 @@ export function createWebRouter(deps: WebDeps): Router {
         // Non-null only for markdown, so the toggle appears nowhere else.
         rawToggle: markdown
           ? {
-              href: hrefFor(req.path, raw ? { view: 'full' } : { view: 'full', raw: '1' }),
+              href: hrefFor(path, raw ? { view: 'full' } : { view: 'full', raw: '1' }),
               label: raw ? 'View rendered' : 'View source',
             }
           : null,
@@ -287,7 +296,7 @@ export function createWebRouter(deps: WebDeps): Router {
           ...entry,
           // Built from the request's own path so the link survives whichever of
           // the id or the sourceId was used to reach the page.
-          href: hrefFor(req.path, { view: entry.value }),
+          href: hrefFor(path, { view: entry.value }),
           active: entry.value === tab,
         })),
       });
@@ -332,30 +341,33 @@ interface HitView {
   fragmentsHtml: string[];
 }
 
-function toResultsView(result: {
-  query: string;
-  mode: SearchMode;
-  effectiveMode: SearchMode;
-  totalHits: number;
-  tookMs: number;
-  embedding: { model: string; dimensions: number };
-  hits: ReadonlyArray<{
-    chunkId: string;
-    documentId: string;
-    sourceId: string;
-    title: string;
-    uri: string | null;
-    contentType: string;
-    chunkIndex: number;
-    headingPath: string[];
-    tags: string[];
-    text: string;
-    score: number;
-    vectorRank: number | null;
-    textRank: number | null;
-    highlights: string[];
-  }>;
-}) {
+function toResultsView(
+  result: {
+    query: string;
+    mode: SearchMode;
+    effectiveMode: SearchMode;
+    totalHits: number;
+    tookMs: number;
+    embedding: { model: string; dimensions: number };
+    hits: ReadonlyArray<{
+      chunkId: string;
+      documentId: string;
+      sourceId: string;
+      title: string;
+      uri: string | null;
+      contentType: string;
+      chunkIndex: number;
+      headingPath: string[];
+      tags: string[];
+      text: string;
+      score: number;
+      vectorRank: number | null;
+      textRank: number | null;
+      highlights: string[];
+    }>;
+  },
+  basePath: string,
+) {
   const hits: HitView[] = result.hits.map((hit, index) => {
     // MongoDB Search gives real highlights on the text leg; a vector-only search
     // has none, so the snippet is cut locally from the chunk instead. Either way
@@ -369,7 +381,7 @@ function toResultsView(result: {
       rank: index + 1,
       title: hit.title,
       sourceId: hit.sourceId,
-      documentHref: `/documents/${encodeURIComponent(hit.documentId)}`,
+      documentHref: `${basePath}/documents/${encodeURIComponent(hit.documentId)}`,
       uri: hit.uri,
       uriHref: httpHref(hit.uri),
       headingPath: hit.headingPath,
@@ -410,22 +422,25 @@ function describeLegs(vectorRank: number | null, textRank: number | null): strin
   return 'ranked';
 }
 
-function toDocumentRow(row: {
-  id: string;
-  title: string;
-  sourceId: string;
-  uri: string | null;
-  contentType: string;
-  tags: string[];
-  contentLength: number;
-  version: number;
-  excerpt: string;
-  chunking: { chunkCount: number };
-  updatedAt: Date | string;
-}) {
+function toDocumentRow(
+  row: {
+    id: string;
+    title: string;
+    sourceId: string;
+    uri: string | null;
+    contentType: string;
+    tags: string[];
+    contentLength: number;
+    version: number;
+    excerpt: string;
+    chunking: { chunkCount: number };
+    updatedAt: Date | string;
+  },
+  basePath: string,
+) {
   return {
     id: row.id,
-    href: `/documents/${encodeURIComponent(row.id)}`,
+    href: `${basePath}/documents/${encodeURIComponent(row.id)}`,
     title: row.title,
     sourceId: row.sourceId,
     uri: row.uri,

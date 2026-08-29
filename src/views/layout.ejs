@@ -21,7 +21,7 @@
     <%# Private knowledge base: never index it, and never leak the query onward. -%>
     <meta name="robots" content="noindex, nofollow" />
     <title><%= title %> · <%= appName %></title>
-    <link rel="stylesheet" href="/css/app.css" />
+    <link rel="stylesheet" href="<%= basePath %>/css/app.css" />
     <%# Empty data URI: stops the browser asking for a favicon that is not there. -%>
     <link rel="icon" href="data:," />
   </head>

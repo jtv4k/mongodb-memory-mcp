@@ -10,18 +10,23 @@
  *
  *  1. `trust proxy` — before anything reads `req.ip`. Off unless configured,
  *     because trusting `X-Forwarded-For` from an unproxied socket lets a client
- *     forge its own source address into the auth-rejection log.
+ *     forge its own source address into the auth-rejection log. The same
+ *     setting also gates whether `X-Forwarded-Prefix` is trusted for
+ *     self-referential links — see `http/base-path.ts`.
  *  2. request id — before pino-http, so the access log, every `logAppError`
  *     call and the `x-request-id` response header all carry the same string.
- *  3. pino-http — one shared logger instance, not a second one.
- *  4. `X-Content-Type-Options: nosniff` — cheap, global, and applies to the JSON
+ *  3. base path — resolves `res.locals.basePath` for every request, trusted or
+ *     not, so it is always a string by the time a template or the terminal
+ *     error handler reads it.
+ *  4. pino-http — one shared logger instance, not a second one.
+ *  5. `X-Content-Type-Options: nosniff` — cheap, global, and applies to the JSON
  *     surfaces too, not just the pages. The rest of the page hardening (CSP) is
  *     mounted in `http/web.ts`, where it can be scoped to HTML responses.
- *  5. MCP, behind auth, for every method on `config.mcp.path`.
- *  6. health — open, no auth. An orchestrator probe has no credentials.
- *  7. `/api` — authenticated *inside* the router, GETs included.
- *  8. web pages and static assets.
- *  9. 404, then the error handler. Both must be last, in that order.
+ *  6. MCP, behind auth, for every method on `config.mcp.path`.
+ *  7. health — open, no auth. An orchestrator probe has no credentials.
+ *  8. `/api` — authenticated *inside* the router, GETs included.
+ *  9. web pages and static assets.
+ *  10. 404, then the error handler. Both must be last, in that order.
  *
  * ## Why `express.json()` is not global
  *
@@ -70,6 +75,7 @@ import type { AppConfig } from './config/env.js';
 import type { MongoConnection } from './db/client.js';
 import type { EmbeddingProvider } from './embeddings/provider.js';
 import { createApiRouter } from './http/api.js';
+import { basePathMiddleware } from './http/base-path.js';
 import { createErrorHandler, notFoundHandler } from './http/errors.js';
 import { createHealthRouter } from './http/health.js';
 import { getRequestId, requestIdMiddleware } from './http/request-id.js';
@@ -133,7 +139,10 @@ export function createApp(deps: CreateAppDeps): AppBundle {
   // --- 2. request identity -------------------------------------------------
   app.use(requestIdMiddleware());
 
-  // --- 3. access logging ---------------------------------------------------
+  // --- 3. base path (self-referential link prefix) --------------------------
+  app.use(basePathMiddleware(config.runtime.trustProxy));
+
+  // --- 4. access logging ---------------------------------------------------
   app.use(
     pinoHttp({
       logger,
@@ -175,7 +184,7 @@ export function createApp(deps: CreateAppDeps): AppBundle {
     }),
   );
 
-  // --- 4. global response hardening ---------------------------------------
+  // --- 5. global response hardening ---------------------------------------
   app.use((_req, res, next) => {
     // Applies to JSON too: a browser must never sniff an API response into
     // something executable.
@@ -187,7 +196,7 @@ export function createApp(deps: CreateAppDeps): AppBundle {
   // against each other for extra token guesses. See the module docblock.
   const requireAuth = createMcpAuthMiddleware(config.mcp, logger);
 
-  // --- 5. MCP (Streamable HTTP) -------------------------------------------
+  // --- 6. MCP (Streamable HTTP) -------------------------------------------
   // `all`, not `post`: the transport uses GET for the SSE stream and DELETE to
   // end a session. Auth is mounted per-route rather than globally so the health
   // probes below stay reachable — and the body parser sits *after* auth, so an
@@ -195,18 +204,18 @@ export function createApp(deps: CreateAppDeps): AppBundle {
   const mcp = createMcpHttpHandler({ service, config, logger });
   app.all(config.mcp.path, requireAuth, express.json({ limit: JSON_BODY_LIMIT }), mcp.handler);
 
-  // --- 6. health probes (deliberately unauthenticated) --------------------
+  // --- 7. health probes (deliberately unauthenticated) --------------------
   // Docker's HEALTHCHECK and a Kubernetes kubelet cannot present a bearer
   // token, and the payloads carry no secrets — see `http/health.ts`.
   app.use(createHealthRouter({ config, logger, connection, embeddings }));
 
-  // --- 7. REST API (authenticated inside the router, reads included) ------
+  // --- 8. REST API (authenticated inside the router, reads included) ------
   app.use(
     '/api',
     createApiRouter({ config, logger, service, requireAuth, bodyLimit: JSON_BODY_LIMIT }),
   );
 
-  // --- 8. web UI + static assets ------------------------------------------
+  // --- 9. web UI + static assets ------------------------------------------
   if (config.web.enabled) {
     // The pages call `KnowledgeService` in-process; they never fetch `/api`,
     // which would require shipping the API token to the browser.
@@ -224,7 +233,7 @@ export function createApp(deps: CreateAppDeps): AppBundle {
     }),
   );
 
-  // --- 9. terminal handlers -----------------------------------------------
+  // --- 10. terminal handlers ----------------------------------------------
   app.use(notFoundHandler());
   app.use(createErrorHandler({ config, logger, bodyLimit: JSON_BODY_LIMIT }));
 
