@@ -32,6 +32,14 @@
     class="underline underline-offset-2 hover:text-indigo-700 dark:hover:text-indigo-300"
     >Documents</a
   >
+  <% doc.domainBreadcrumb.forEach(function (segment) { %>
+  <span aria-hidden="true" class="px-1">›</span>
+  <a
+    href="<%= segment.href %>"
+    class="underline underline-offset-2 hover:text-indigo-700 dark:hover:text-indigo-300"
+    ><%= segment.label %></a
+  >
+  <% }); %>
   <span aria-hidden="true" class="px-1">›</span>
   <span class="font-mono"><%= doc.sourceId %></span>
 </nav>

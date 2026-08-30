@@ -277,7 +277,7 @@ export function createWebRouter(deps: WebDeps): Router {
         view: 'document',
         activeNav: 'documents',
         title: detail.document.title,
-        doc: toDocumentView(detail.document),
+        doc: toDocumentView(detail.document, getBasePath(res)),
         chunks: detail.chunks.map(toChunkView),
         tab,
         // PRE-ESCAPED HTML from `renderMarkdown`, or null to render the source in
@@ -456,36 +456,41 @@ function toDocumentRow(
   };
 }
 
-function toDocumentView(document: {
-  id: string;
-  title: string;
-  sourceId: string;
-  uri: string | null;
-  contentType: string;
-  tags: string[];
-  content: string;
-  contentLength: number;
-  contentHash: string;
-  version: number;
-  metadata: Record<string, unknown>;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-  chunking: {
-    strategy: string;
-    chunkSizeTokens: number;
-    chunkOverlapTokens: number;
-    chunkCount: number;
-  };
-  embedding: { provider: string; model: string; dimensions: number; contextual: boolean };
-  ingest: {
-    at: Date | string;
-    channel: string;
-    agent: string | null;
-    sessionId: string | null;
-    clientName: string | null;
-    clientVersion: string | null;
-  };
-}) {
+function toDocumentView(
+  document: {
+    id: string;
+    title: string;
+    sourceId: string;
+    uri: string | null;
+    contentType: string;
+    tags: string[];
+    domain: string | null;
+    domainPath: string[];
+    content: string;
+    contentLength: number;
+    contentHash: string;
+    version: number;
+    metadata: Record<string, unknown>;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    chunking: {
+      strategy: string;
+      chunkSizeTokens: number;
+      chunkOverlapTokens: number;
+      chunkCount: number;
+    };
+    embedding: { provider: string; model: string; dimensions: number; contextual: boolean };
+    ingest: {
+      at: Date | string;
+      channel: string;
+      agent: string | null;
+      sessionId: string | null;
+      clientName: string | null;
+      clientVersion: string | null;
+    };
+  },
+  basePath: string,
+) {
   return {
     id: document.id,
     title: document.title,
@@ -494,6 +499,8 @@ function toDocumentView(document: {
     uriHref: httpHref(document.uri),
     contentType: document.contentType,
     tags: document.tags,
+    domain: document.domain,
+    domainBreadcrumb: toDomainBreadcrumb(document.domainPath, basePath),
     version: document.version,
     // The verbatim bytes that were ingested, escaped by the template like every
     // other stored value. Rendering it whole is no more page weight than the
@@ -516,6 +523,24 @@ function toDocumentView(document: {
     },
     metadataJson: formatMetadata(document.metadata),
   };
+}
+
+/**
+ * `domainPath` is the materialised ancestor chain (see
+ * {@link DocumentDoc.domainPath}): `"docs/api/v1"` becomes
+ * `["docs", "docs/api", "docs/api/v1"]`. Each ancestor becomes one breadcrumb
+ * segment — its last path component as the label, the full ancestor path as the
+ * `domain` filter on `/documents` — so a nested domain reads as a trail of
+ * clickable steps rather than one opaque slash-joined string.
+ */
+function toDomainBreadcrumb(
+  domainPath: readonly string[],
+  basePath: string,
+): Array<{ label: string; href: string }> {
+  return domainPath.map((path) => ({
+    label: path.split('/').pop() ?? path,
+    href: `${basePath}/documents?domain=${encodeURIComponent(path)}`,
+  }));
 }
 
 function toChunkView(chunk: {

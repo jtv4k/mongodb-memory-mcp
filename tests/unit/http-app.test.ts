@@ -609,6 +609,64 @@ describe('web UI', () => {
     expect(html).toContain('/documents/notes%2Frelease?view=details');
   });
 
+  it('shows the domain path as breadcrumb segments between Documents and the source id', async () => {
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({
+        sourceId: 'short_story_luna_healing_spring',
+        domain: 'Stories',
+        domainPath: ['Stories'],
+      }),
+    );
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+    const breadcrumb = html.slice(
+      html.indexOf('aria-label="Breadcrumb"'),
+      html.indexOf('</nav>', html.indexOf('aria-label="Breadcrumb"')),
+    );
+
+    expect(breadcrumb).toContain('>Documents<');
+    expect(breadcrumb).toContain(`href="/documents?domain=Stories"`);
+    expect(breadcrumb).toContain('>Stories<');
+    expect(breadcrumb).toContain('short_story_luna_healing_spring');
+    // Documents, then each domain segment, then the source id.
+    expect(breadcrumb.indexOf('>Documents<')).toBeLessThan(breadcrumb.indexOf('>Stories<'));
+    expect(breadcrumb.indexOf('>Stories<')).toBeLessThan(
+      breadcrumb.indexOf('short_story_luna_healing_spring'),
+    );
+  });
+
+  it('renders one breadcrumb segment per ancestor of a nested domain path', async () => {
+    app.service.getDocument.mockResolvedValue(
+      documentDetail({ domain: 'docs/api/v1', domainPath: ['docs', 'docs/api', 'docs/api/v1'] }),
+    );
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+    const breadcrumb = html.slice(
+      html.indexOf('aria-label="Breadcrumb"'),
+      html.indexOf('</nav>', html.indexOf('aria-label="Breadcrumb"')),
+    );
+
+    expect(breadcrumb).toContain('href="/documents?domain=docs"');
+    expect(breadcrumb).toContain('href="/documents?domain=docs%2Fapi"');
+    expect(breadcrumb).toContain('href="/documents?domain=docs%2Fapi%2Fv1"');
+    // Labels are the last path segment only, not the full ancestor path.
+    expect(breadcrumb).toContain('>v1<');
+    expect(breadcrumb).not.toContain('>docs/api/v1<');
+  });
+
+  it('omits the domain breadcrumb entirely for a document with no domain', async () => {
+    app.service.getDocument.mockResolvedValue(documentDetail());
+
+    const html = await (await fetch(`${app.baseUrl}/documents/notes%2Frelease`)).text();
+    const breadcrumb = html.slice(
+      html.indexOf('aria-label="Breadcrumb"'),
+      html.indexOf('</nav>', html.indexOf('aria-label="Breadcrumb"')),
+    );
+
+    expect(breadcrumb).toContain('>Documents<');
+    expect(breadcrumb).not.toContain('/documents?domain=');
+  });
+
   it('renders the chunk list when the chunks tab is selected', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 
@@ -887,6 +945,8 @@ function documentRow() {
     contentHash: 'a'.repeat(64),
     contentLength: 2048,
     tags: ['notes'],
+    domain: null,
+    domainPath: [],
     metadata: {},
     excerpt: 'The chunker respects fenced code blocks.',
     version: 3,
