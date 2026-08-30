@@ -18,6 +18,7 @@
 import { z } from 'zod';
 
 import { ValidationError } from '../errors.js';
+import { stripInvisible } from './sanitize.js';
 import { CONTENT_TYPES } from './types.js';
 
 /** Largest single document we accept, in characters (~5MB of UTF-8 text). */
@@ -209,6 +210,10 @@ export const storeContentShape = {
     .string()
     .min(1, 'content must not be empty')
     .max(MAX_CONTENT_CHARS, `content must be <= ${MAX_CONTENT_CHARS} characters`)
+    // Invisible/control/bidi characters are stripped once, here, so every
+    // downstream reader (chunking, search results, get_content) sees a value
+    // that is already clean — see `domain/sanitize.ts`.
+    .transform(stripInvisible)
     .describe('Raw content to ingest. Markdown structure is respected when chunking.'),
   title: z
     .string()
@@ -462,6 +467,74 @@ export const deleteContentOutputShape = {
   deletedDocuments: z.number().int(),
   deletedChunks: z.number().int(),
   sourceIds: z.array(z.string()),
+} satisfies z.ZodRawShape;
+
+// ---------------------------------------------------------------------------
+// get_content
+// ---------------------------------------------------------------------------
+
+/** Default character window returned by a single get_content call. */
+const GET_CONTENT_DEFAULT_LIMIT = 50_000;
+/** Hard cap on how many characters one call can return. */
+const GET_CONTENT_MAX_LIMIT = 300_000;
+
+export const getContentShape = {
+  sourceId: sourceIdSchema.optional().describe('Read the document with this sourceId.'),
+  documentId: objectIdHexSchema.optional().describe('Read the document with this ObjectId.'),
+  offset: z
+    .number()
+    .int()
+    .min(0)
+    .default(0)
+    .describe('0-based character position to start reading from.'),
+  limit: z
+    .number()
+    .int()
+    .min(1)
+    .max(GET_CONTENT_MAX_LIMIT)
+    .default(GET_CONTENT_DEFAULT_LIMIT)
+    .describe(`Maximum characters to return, up to ${GET_CONTENT_MAX_LIMIT}.`),
+} satisfies z.ZodRawShape;
+
+export const getContentSchema = z.object(getContentShape).superRefine((input, ctx) => {
+  const selectors = [input.sourceId, input.documentId].filter((value) => value !== undefined);
+  if (selectors.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'provide sourceId or documentId',
+    });
+  }
+  if (selectors.length > 1) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'provide only ONE of sourceId or documentId',
+    });
+  }
+});
+
+export type GetContentInput = z.infer<typeof getContentSchema>;
+
+export const getContentOutputShape = {
+  documentId: z.string(),
+  sourceId: z.string(),
+  title: z.string(),
+  uri: z.string().nullable(),
+  contentType: contentTypeSchema,
+  tags: z.array(z.string()),
+  version: z.number().int(),
+  chunkCount: z.number().int(),
+  contentLength: z.number().int(),
+  content: z.string(),
+  offset: z.number().int(),
+  returnedLength: z.number().int(),
+  truncated: z.boolean(),
+  embedding: z.object({
+    provider: z.string(),
+    model: z.string(),
+    dimensions: z.number().int(),
+  }),
+  createdAt: z.string(),
+  updatedAt: z.string(),
 } satisfies z.ZodRawShape;
 
 // ---------------------------------------------------------------------------

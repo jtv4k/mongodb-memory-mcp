@@ -38,7 +38,7 @@ const TAGS_CHARS = 32;
 
 const DESCRIPTION = `List the documents currently in the knowledge base, newest first by default.
 
-Use it to orient yourself before searching or storing: to find out whether a topic has been ingested at all, to recover the exact sourceId you need for a filtered search or for delete_content, and to check how stale a document is.
+Use it to orient yourself before searching or storing: to find out whether a topic has been ingested at all, to recover the exact sourceId you need for get_content, a filtered search, or delete_content, and to check how stale a document is.
 
 What you get back is one row per DOCUMENT (not per chunk): its sourceId, title, content type, tag set, chunk count and last-updated time.
 

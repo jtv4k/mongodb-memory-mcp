@@ -1,7 +1,7 @@
 /**
  * MCP server composition root.
  *
- * This module wires four tool modules onto an `McpServer` and does nothing
+ * This module wires the tool modules onto an `McpServer` and does nothing
  * else — no validation, no formatting, no service calls. Business logic lives
  * behind `KnowledgeService`; presentation lives in `./tools/*`. Keeping this
  * file inert is what makes it safe for `http.ts` to construct a fresh server
@@ -11,7 +11,7 @@
  * into the model's context once, up front, so it is the only place to explain
  * *policy* — when to store versus when to search, that re-storing is idempotent,
  * that deletion is irreversible. Per-tool descriptions explain a single tool in
- * isolation; instructions explain how the four fit together.
+ * isolation; instructions explain how the tools fit together.
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 
@@ -19,6 +19,7 @@ import type { AppConfig } from '../config/env.js';
 import type { Logger } from '../logger.js';
 import type { KnowledgeService } from '../services/types.js';
 import { registerDeleteContentTool } from './tools/delete-content.js';
+import { registerGetContentTool } from './tools/get-content.js';
 import { registerListSourcesTool } from './tools/list-sources.js';
 import { installInputRejectionHandler } from './tools/rejections.js';
 import { registerSearchKnowledgeTool } from './tools/search-knowledge.js';
@@ -28,6 +29,7 @@ import type { ToolDeps } from './tools/shared.js';
 /** The complete tool surface. Exported so tests and docs cannot drift from it. */
 export const TOOL_NAMES = [
   'store_content',
+  'get_content',
   'search_knowledge',
   'list_sources',
   'delete_content',
@@ -51,7 +53,7 @@ Default workflow:
 Things worth knowing:
 - store_content is idempotent per sourceId. Re-storing identical content is a no-op that reports outcome "unchanged"; re-storing changed content replaces the old version and bumps the version number. Re-ingesting a whole corpus is therefore safe and cheap.
 - Choose sourceIds that a human would recognise and that you could reconstruct later, e.g. "docs/api/authentication" or "adr/0007-hybrid-search". Omitting it derives one from the title or content hash, which is stable but opaque.
-- Search returns CHUNKS with their heading path, not whole documents. Several hits from one sourceId means that document is strongly relevant. Use list_sources to see the document-level inventory.
+- Search returns CHUNKS with their heading path, not whole documents. Several hits from one sourceId means that document is strongly relevant. Use list_sources to see the document-level inventory, and get_content to read a document's exact, contiguous stored text.
 - Hybrid search fuses semantic and keyword ranking, so scores are small and only comparable within a single response.
 - Tags are lowercased, deduplicated, and AND-ed when filtering. Keep them broad and few, or filters will match nothing.
 - delete_content is irreversible and has no undo. Never use it to update something — store_content with the same sourceId does that atomically. Confirm with a human before deleting by tag.`;
@@ -70,6 +72,7 @@ export function createMcpServer(deps: McpServerDeps): McpServer {
   const toolDeps: ToolDeps = deps;
 
   registerStoreContentTool(server, toolDeps);
+  registerGetContentTool(server, toolDeps);
   registerSearchKnowledgeTool(server, toolDeps);
   registerListSourcesTool(server, toolDeps);
   registerDeleteContentTool(server, toolDeps);
