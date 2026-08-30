@@ -1,7 +1,8 @@
 <%#
   Browse every ingested document.
 
-  Locals: form { q, tag }, documents (DocumentRow view models), pagination.
+  Locals: form { q, tag, domain }, domainFilter ({ breadcrumb, clearHref } or
+          null), documents (DocumentRow view models), pagination.
 
   All values are ingested content and go through the escaping output tag.
   The raw output tag does not appear on this page at all.
@@ -15,7 +16,7 @@
 <form
   action="<%= basePath %>/documents"
   method="get"
-  class="mt-6 grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[2fr_1fr_auto] sm:items-end sm:p-5 dark:border-slate-800 dark:bg-slate-900"
+  class="mt-6 grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-end sm:p-5 dark:border-slate-800 dark:bg-slate-900"
 >
   <div>
     <label for="q" class="block text-sm font-medium text-slate-800 dark:text-slate-200">
@@ -44,6 +45,19 @@
       class="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-400 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
     />
   </div>
+  <div>
+    <label for="domain" class="block text-sm font-medium text-slate-800 dark:text-slate-200">
+      Domain
+    </label>
+    <input
+      id="domain"
+      name="domain"
+      type="text"
+      value="<%= form.domain %>"
+      placeholder="docs/api"
+      class="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-mono text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-indigo-500 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-indigo-600 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-100 dark:placeholder:text-slate-500"
+    />
+  </div>
   <button
     type="submit"
     class="h-[42px] rounded-lg bg-slate-900 px-5 font-medium text-white hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
@@ -51,6 +65,33 @@
     Filter
   </button>
 </form>
+
+<% if (domainFilter) { %>
+<nav
+  aria-label="Active domain filter"
+  class="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-2.5 text-xs text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950 dark:text-indigo-200"
+>
+  <span aria-hidden="true">📁</span>
+  <span class="font-medium">Domain:</span>
+  <span class="flex flex-wrap items-center gap-1">
+    <% domainFilter.breadcrumb.forEach(function (segment, index) { %>
+    <% if (index > 0) { %>
+    <span aria-hidden="true" class="text-indigo-400 dark:text-indigo-600">/</span>
+    <% } %>
+    <a
+      href="<%= segment.href %>"
+      class="rounded-md px-1.5 py-0.5 font-mono font-medium underline-offset-2 hover:bg-indigo-100 hover:underline dark:hover:bg-indigo-900"
+      ><%= segment.label %></a
+    >
+    <% }); %>
+  </span>
+  <a
+    href="<%= domainFilter.clearHref %>"
+    class="ml-auto rounded-md px-2 py-0.5 font-medium text-indigo-700 underline-offset-2 hover:underline dark:text-indigo-300"
+    >Clear ×</a
+  >
+</nav>
+<% } %>
 
 <% if (documents.length === 0) { %>
 <div
@@ -90,6 +131,22 @@
     <p class="mt-1 font-mono text-xs break-all text-slate-600 dark:text-slate-400">
       <%= doc.sourceId %>
     </p>
+
+    <% if (doc.domainBreadcrumb.length > 0) { %>
+    <nav aria-label="Domain path" class="mt-1.5 flex flex-wrap items-center gap-1 text-xs">
+      <span aria-hidden="true" class="text-slate-400 dark:text-slate-500">📁</span>
+      <% doc.domainBreadcrumb.forEach(function (segment, index) { %>
+      <% if (index > 0) { %>
+      <span aria-hidden="true" class="text-indigo-300 dark:text-indigo-700">/</span>
+      <% } %>
+      <a
+        href="<%= segment.href %>"
+        class="rounded-md bg-indigo-50 px-1.5 py-0.5 font-mono font-medium text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950 dark:text-indigo-300 dark:hover:bg-indigo-900"
+        ><%= segment.label %></a
+      >
+      <% }); %>
+    </nav>
+    <% } %>
 
     <% if (doc.excerpt) { %>
     <p class="mt-2 line-clamp-2 text-sm text-slate-700 dark:text-slate-300"><%= doc.excerpt %></p>

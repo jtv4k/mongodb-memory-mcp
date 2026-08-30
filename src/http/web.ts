@@ -47,6 +47,7 @@ import { listDocumentsSchema, parseInput, searchKnowledgeSchema } from '../domai
 import { NotFoundError, toAppError } from '../errors.js';
 import { logAppError, type Logger } from '../logger.js';
 import { buildHighlightFragments, renderFragmentsHtml } from '../services/highlight.js';
+import { domainAncestors } from '../services/identity.js';
 import { renderMarkdown } from '../services/markdown.js';
 import type { KnowledgeService } from '../services/types.js';
 
@@ -218,6 +219,8 @@ export function createWebRouter(deps: WebDeps): Router {
     page(async (req, res) => {
       const search = firstString(req.query.q) ?? '';
       const tag = firstString(req.query.tag) ?? '';
+      const domain = firstString(req.query.domain) ?? '';
+      const basePath = getBasePath(res);
 
       const input = parseInput(
         listDocumentsSchema,
@@ -226,19 +229,32 @@ export function createWebRouter(deps: WebDeps): Router {
           offset: nonNegativeInt(firstString(req.query.offset)),
           ...(search.trim().length > 0 ? { search } : {}),
           ...(tag.trim().length > 0 ? { tag } : {}),
+          // `domain` filters by the materialised ancestor chain server-side (see
+          // domainAncestors in services/identity.ts), so this one query param
+          // covers both an exact domain and its whole subtree.
+          ...(domain.trim().length > 0 ? { domain } : {}),
         },
         'document list input',
       );
 
       const result = await service.listDocuments(input, context(req, res));
-      const carry = { q: search, tag };
-      const basePath = getBasePath(res);
+      const carry = { q: search, tag, domain };
 
       res.render('layout', {
         view: 'documents',
         activeNav: 'documents',
         title: 'Documents',
-        form: { q: search, tag },
+        form: { q: search, tag, domain },
+        // The active filter, if any, as the same breadcrumb-style segments the
+        // document page uses — so "clear" and each ancestor stay consistent
+        // with how the trail reads everywhere else.
+        domainFilter:
+          domain.trim().length > 0
+            ? {
+                breadcrumb: toDomainBreadcrumb(domainAncestors(domain.trim()), basePath),
+                clearHref: hrefFor(`${basePath}/documents`, { q: search, tag }),
+              }
+            : null,
         documents: result.documents.map((row) => toDocumentRow(row, basePath)),
         pagination: toPagination(
           `${basePath}/documents`,
@@ -430,6 +446,8 @@ function toDocumentRow(
     uri: string | null;
     contentType: string;
     tags: string[];
+    domain: string | null;
+    domainPath: string[];
     contentLength: number;
     version: number;
     excerpt: string;
@@ -447,6 +465,8 @@ function toDocumentRow(
     uriHref: httpHref(row.uri),
     contentType: row.contentType,
     tags: row.tags,
+    domain: row.domain,
+    domainBreadcrumb: toDomainBreadcrumb(row.domainPath, basePath),
     chunkCount: row.chunking.chunkCount,
     chunkLabel: `${formatCount(row.chunking.chunkCount)} ${row.chunking.chunkCount === 1 ? 'chunk' : 'chunks'}`,
     sizeLabel: formatChars(row.contentLength),

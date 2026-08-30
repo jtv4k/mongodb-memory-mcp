@@ -588,6 +588,57 @@ describe('web UI', () => {
     expect(firstArgument(app.service.listDocuments)).toMatchObject({ offset: 20, tag: 'notes' });
   });
 
+  it('filters by domain from the query string and shows the active filter as a breadcrumb', async () => {
+    app.service.listDocuments.mockResolvedValue({
+      documents: [documentRow()],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+
+    const html = await (await fetch(`${app.baseUrl}/documents?domain=docs%2Fapi`)).text();
+
+    expect(firstArgument(app.service.listDocuments)).toMatchObject({ domain: 'docs/api' });
+    const banner = html.slice(
+      html.indexOf('aria-label="Active domain filter"'),
+      html.indexOf('</nav>', html.indexOf('aria-label="Active domain filter"')),
+    );
+    expect(banner).toContain('href="/documents?domain=docs"');
+    expect(banner).toContain('href="/documents?domain=docs%2Fapi"');
+    expect(banner).toContain('>api<');
+    // Clearing drops domain but keeps any other active filters.
+    expect(banner).toContain('href="/documents"');
+  });
+
+  it('shows each row domain as clickable path segments', async () => {
+    app.service.listDocuments.mockResolvedValue({
+      documents: [{ ...documentRow(), domain: 'Stories', domainPath: ['Stories'] }],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+
+    const html = await (await fetch(`${app.baseUrl}/documents`)).text();
+
+    expect(html).toContain('aria-label="Domain path"');
+    expect(html).toContain('href="/documents?domain=Stories"');
+    expect(html).toContain('>Stories<');
+  });
+
+  it('omits the domain filter banner and per-row domain path when nothing has a domain', async () => {
+    app.service.listDocuments.mockResolvedValue({
+      documents: [documentRow()],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    });
+
+    const html = await (await fetch(`${app.baseUrl}/documents`)).text();
+
+    expect(html).not.toContain('aria-label="Active domain filter"');
+    expect(html).not.toContain('aria-label="Domain path"');
+  });
+
   it('renders a document and resolves it by the identifier in the URL', async () => {
     app.service.getDocument.mockResolvedValue(documentDetail());
 
