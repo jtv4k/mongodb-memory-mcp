@@ -12,6 +12,7 @@ import {
   CHUNKING_STRATEGIES,
   chunkContent,
   estimateTokens,
+  looksLikeMarkdownWrappedCode,
   parseMarkdownBlocks,
 } from '../../src/chunking/index.js';
 import type { ChunkingConfig } from '../../src/config/env.js';
@@ -310,6 +311,46 @@ describe('parseMarkdownBlocks', () => {
   });
 });
 
+describe('looksLikeMarkdownWrappedCode', () => {
+  it('detects a header immediately followed by a fenced code block', () => {
+    const content = ['# Header', '', '```bash', 'echo "Hello."', '```'].join('\n');
+    expect(looksLikeMarkdownWrappedCode(content)).toBe(true);
+  });
+
+  it('detects it even with blank lines and no info string on the fence', () => {
+    const content = ['## Deploy script', '', '', '```', 'kubectl apply -f .', '```'].join('\n');
+    expect(looksLikeMarkdownWrappedCode(content)).toBe(true);
+  });
+
+  it('is false for plain code with no leading heading', () => {
+    expect(looksLikeMarkdownWrappedCode('const a = 1;\n\nconst b = 2;\n')).toBe(false);
+  });
+
+  it('is false for a heading with no fence at all', () => {
+    expect(looksLikeMarkdownWrappedCode('# Just a heading\n\nSome prose, no code fence.')).toBe(
+      false,
+    );
+  });
+
+  it('is false for a fence with no leading heading', () => {
+    expect(looksLikeMarkdownWrappedCode(['```js', 'const a = 1;', '```'].join('\n'))).toBe(false);
+  });
+
+  it('is false when a paragraph sits between the heading and the fence', () => {
+    const content = ['# Header', '', 'Some prose in between.', '', '```js', 'x();', '```'].join(
+      '\n',
+    );
+    expect(looksLikeMarkdownWrappedCode(content)).toBe(false);
+  });
+
+  it('is false for a `#` comment inside a fence with no preceding heading', () => {
+    // A real code file whose first line happens to be a shell comment must
+    // never be mistaken for a markdown-wrapped submission.
+    const content = ['#!/usr/bin/env bash', 'echo "hi"'].join('\n');
+    expect(looksLikeMarkdownWrappedCode(content)).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // chunkContent — degenerate input
 // ---------------------------------------------------------------------------
@@ -365,6 +406,11 @@ describe('chunkContent strategy selection', () => {
       contentType: 'code',
       content: 'const a = 1;\n\nconst b = 2;\n',
       strategy: CHUNKING_STRATEGIES.code,
+    },
+    {
+      contentType: 'code',
+      content: ['# Header', '', '```bash', 'echo "Hello."', '```'].join('\n'),
+      strategy: CHUNKING_STRATEGIES.codeMarkdownWrapped,
     },
     {
       contentType: 'html',
@@ -634,6 +680,30 @@ describe('chunkContent code', () => {
       expect(startsALine(SOURCE, chunk.charStart)).toBe(true);
       expect(endsALine(SOURCE, chunk.charEnd)).toBe(true);
     }
+  });
+
+  it('gives a markdown-wrapped submission the heading breadcrumb, content untouched', () => {
+    const content = ['# Deploy script', '', '```bash', 'echo "Hello."', '```'].join('\n');
+    const options = config();
+    const result = chunkContent({ content, contentType: 'code', options });
+
+    expectChunkInvariants(content, result);
+    expect(result.strategy).toBe(CHUNKING_STRATEGIES.codeMarkdownWrapped);
+    // Small enough to pack into one chunk, which then carries the breadcrumb.
+    expect(result.chunks).toHaveLength(1);
+    expect(result.chunks[0]?.headingPath).toEqual(['Deploy script']);
+    // The invariant chunk.text === content.slice(charStart, charEnd) already
+    // holds via expectChunkInvariants; this pins that the header and fence
+    // markers survive verbatim rather than being stripped.
+    expect(result.chunks[0]?.text).toBe(content);
+  });
+
+  it('does not misdetect a real code file that starts with a shell comment', () => {
+    const content = ['#!/usr/bin/env bash', 'echo "hi"'].join('\n');
+    const options = config();
+    const result = chunkContent({ content, contentType: 'code', options });
+
+    expect(result.strategy).toBe(CHUNKING_STRATEGIES.code);
   });
 });
 

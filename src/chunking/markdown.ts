@@ -253,6 +253,20 @@ function atxTitle(raw: string | undefined): string {
   return /^#+$/.test(withoutClosingRun) ? '' : withoutClosingRun.trim();
 }
 
+/**
+ * True when content opens with a markdown heading immediately followed by a
+ * fenced code block — an AI client wrapping the actual code it meant to store
+ * in markdown ceremony (`# Header` then a ```` ``` ```` fence) instead of
+ * sending the code itself. Checked against only the first two structural
+ * blocks ("the beginning of the file"), so a `# comment` line inside a fence
+ * deeper in a genuine source file never trips it — `parseMarkdownBlocks`
+ * already treats fence interiors as opaque.
+ */
+export function looksLikeMarkdownWrappedCode(content: string): boolean {
+  const blocks = parseMarkdownBlocks(content);
+  return blocks[0]?.kind === 'heading' && blocks[1]?.kind === 'fence';
+}
+
 function findFrontMatter(
   lines: readonly SourceLine[],
 ): { start: number; end: number; nextLine: number } | null {

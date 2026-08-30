@@ -67,6 +67,7 @@ import { ChunkingError } from '../errors.js';
 
 import {
   headingPathOf,
+  looksLikeMarkdownWrappedCode,
   parseMarkdownBlocks,
   pushHeading,
   scanLines,
@@ -76,7 +77,7 @@ import { estimateTokens, type TokenCounter } from './tokens.js';
 
 export { estimateTokens } from './tokens.js';
 export type { TokenCounter } from './tokens.js';
-export { parseMarkdownBlocks, scanLines } from './markdown.js';
+export { looksLikeMarkdownWrappedCode, parseMarkdownBlocks, scanLines } from './markdown.js';
 export type { MarkdownBlock, MarkdownBlockKind, SourceLine } from './markdown.js';
 
 /**
@@ -89,6 +90,11 @@ export const CHUNKING_STRATEGIES = {
   markdown: 'markdown-structural',
   /** Source code: blank-line separated blocks, never split mid-line. */
   code: 'code-block',
+  /**
+   * Source code an AI client wrapped in a markdown header + fenced block
+   * instead of sending the code itself — see {@link looksLikeMarkdownWrappedCode}.
+   */
+  codeMarkdownWrapped: 'code-markdown-wrapped',
   /** HTML: block-level close tags, with `<h1>`–`<h6>` feeding the breadcrumb. */
   html: 'html-blocks',
   /** JSON that parses: one segment per top-level array element / object entry. */
@@ -231,10 +237,18 @@ function segmentContent(content: string, contentType: ContentType): Segmentation
     case 'markdown':
       return { segments: segmentMarkdown(content), strategy: CHUNKING_STRATEGIES.markdown };
     case 'code':
-      return {
-        segments: blankLineSegments(content, LINE_TIERS),
-        strategy: CHUNKING_STRATEGIES.code,
-      };
+      // A markdown-wrapped submission gets markdown's heading-aware
+      // segmentation instead of naive blank-line splitting, so the header
+      // becomes a real headingPath breadcrumb and the fence is recognised as
+      // one block rather than three arbitrary line-runs (the header line, the
+      // opening/closing fence markers, and the code between them). `content`
+      // itself is untouched either way — only how it is split changes.
+      return looksLikeMarkdownWrappedCode(content)
+        ? { segments: segmentMarkdown(content), strategy: CHUNKING_STRATEGIES.codeMarkdownWrapped }
+        : {
+            segments: blankLineSegments(content, LINE_TIERS),
+            strategy: CHUNKING_STRATEGIES.code,
+          };
     case 'html':
       return { segments: segmentHtml(content), strategy: CHUNKING_STRATEGIES.html };
     case 'json':
