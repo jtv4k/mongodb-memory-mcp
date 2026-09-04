@@ -188,6 +188,7 @@ export interface StoreOverrides {
   chunkOverlapTokens?: number;
   agent?: string;
   sessionId?: string;
+  domain?: string;
 }
 
 /**

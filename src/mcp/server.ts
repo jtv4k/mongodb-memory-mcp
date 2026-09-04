@@ -24,6 +24,7 @@ import { registerListSourcesTool } from './tools/list-sources.js';
 import { installInputRejectionHandler } from './tools/rejections.js';
 import { registerSearchKnowledgeTool } from './tools/search-knowledge.js';
 import { registerStoreContentTool } from './tools/store-content.js';
+import { registerDomainTool } from './tools/domain.js';
 import type { ToolDeps } from './tools/shared.js';
 
 /** The complete tool surface. Exported so tests and docs cannot drift from it. */
@@ -33,6 +34,7 @@ export const TOOL_NAMES = [
   'search_knowledge',
   'list_sources',
   'delete_content',
+  'domain',
 ] as const;
 
 export type ToolName = (typeof TOOL_NAMES)[number];
@@ -76,6 +78,7 @@ export function createMcpServer(deps: McpServerDeps): McpServer {
   registerSearchKnowledgeTool(server, toolDeps);
   registerListSourcesTool(server, toolDeps);
   registerDeleteContentTool(server, toolDeps);
+  registerDomainTool(server, toolDeps);
 
   // After the tools, because it wraps the handler their registration installed.
   installInputRejectionHandler(server, toolDeps);

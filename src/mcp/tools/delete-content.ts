@@ -34,12 +34,14 @@ Provide EXACTLY ONE selector:
 - sourceId — the normal case. Deletes the single document with that identifier.
 - documentId — the 24-character hex ObjectId, when you have it from a search hit.
 - tags — deletes every document carrying ALL of the listed tags. This can remove many documents in one call.
+- domain — deletes all documents within a specific domain.
 
 Use it to retract content that is wrong, superseded or should never have been stored. Do NOT use it to update a document: calling store_content again with the same sourceId replaces the content and bumps the version in one step, and never leaves a window where the knowledge base has nothing.
 
 Gotchas:
 - This is irreversible. There is no undo and no tombstone; the content is gone.
 - The tags selector is AND, not OR, and it is exact against lowercased tags. Run list_sources with the same tag first to see exactly what you are about to delete.
+- The domain selector deletes all content within that domain.
 - Passing zero selectors, or more than one, is rejected — nothing is deleted.
 - Deleting something that does not exist is not an error. The result reports 0 documents deleted, so check that number rather than assuming success.`;
 
@@ -103,6 +105,7 @@ function describeSelector(input: DeleteContentInput): string {
   if (input.sourceId !== undefined) return `sourceId "${inline(input.sourceId)}"`;
   if (input.documentId !== undefined) return `documentId ${inline(input.documentId)}`;
   if (input.tags !== undefined) return `all of the tags [${inline(input.tags.join(', '))}]`;
+  if (input.domain !== undefined) return `domain "${inline(input.domain)}"`;
   return 'that selector';
 }
 

@@ -120,6 +120,19 @@ export function deriveTitle(input: TitleInput): string {
   return input.sourceId;
 }
 
+/**
+ * Materialise the ancestor chain of a domain path: `"docs/api/v1"` becomes
+ * `["docs", "docs/api", "docs/api/v1"]`. Powers prefix-filtered search/list as
+ * a plain array-contains-value query — the same pattern `tags` already uses —
+ * instead of a `$regex` or a range scan.
+ */
+export function domainAncestors(domain: string | null): string[] {
+  if (domain === null) return [];
+
+  const segments = domain.split('/');
+  return segments.map((_, i) => segments.slice(0, i + 1).join('/'));
+}
+
 function truncateTitle(value: string): string {
   const collapsed = value.replace(/\s+/gu, ' ').trim();
   if (collapsed.length <= MAX_DERIVED_TITLE_CHARS) return collapsed;

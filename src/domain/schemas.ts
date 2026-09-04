@@ -102,6 +102,20 @@ const sourceIdSchema = z
     'must start alphanumeric and contain only letters, digits, and . _ : @ - /',
   );
 
+/**
+ * A domain identifier for organizing content in a filesystem-like structure.
+ * Deliberately narrow: this value ends up in MongoDB queries, index filters and URLs.
+ */
+const domainSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(128)
+  .regex(
+    /^[A-Za-z0-9][A-Za-z0-9._/-]*$/,
+    'must start alphanumeric and contain only letters, digits, and . _ / -',
+  );
+
 const objectIdHexSchema = z
   .string()
   .trim()
@@ -227,6 +241,11 @@ export const storeContentShape = {
     .describe(
       'Stable identifier for this content. Re-storing the same sourceId replaces it and bumps its version. Derived from title/uri/content hash if omitted.',
     ),
+  domain: domainSchema
+    .optional()
+    .describe(
+      'Domain identifier for organizing content in a filesystem-like structure. Optional, but recommended for better organization.',
+    ),
   uri: uriSchema.describe('Origin of the content: URL, file path, ticket reference, etc.'),
   contentType: contentTypeSchema
     .default('markdown')
@@ -284,6 +303,7 @@ export type StoreContentInput = z.infer<typeof storeContentSchema>;
 export const storeContentOutputShape = {
   documentId: z.string(),
   sourceId: z.string(),
+  domain: z.string().nullable(),
   title: z.string(),
   version: z.number().int(),
   chunkCount: z.number().int(),
@@ -308,6 +328,7 @@ export const searchFiltersSchema = z
     documentIds: z.array(objectIdHexSchema).max(100).optional(),
     tags: z.array(z.string().trim().min(1).max(64)).max(50).optional(),
     contentTypes: z.array(contentTypeSchema).max(CONTENT_TYPES.length).optional(),
+    domain: domainSchema.optional(),
   })
   .strict()
   .optional();
@@ -400,6 +421,7 @@ export const listSourcesShape = {
     .default('updatedAt')
     .describe('Sort field.'),
   order: z.enum(['asc', 'desc']).default('desc').describe('Sort direction.'),
+  domain: domainSchema.optional().describe('Only sources within this domain.'),
 } satisfies z.ZodRawShape;
 
 export const listSourcesSchema = z.object(listSourcesShape);
@@ -415,6 +437,7 @@ export const sourceSummaryOutputSchema = z.object({
   contentLength: z.number().int(),
   version: z.number().int(),
   embeddingModels: z.array(z.string()),
+  domain: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -441,22 +464,23 @@ export const deleteContentShape = {
     .describe(
       'Delete EVERY document carrying ALL of these tags. This is a bulk delete with no undo — prefer sourceId or documentId unless you genuinely mean to remove a whole tagged set.',
     ),
+  domain: domainSchema.optional().describe('Delete all documents within this domain.'),
 } satisfies z.ZodRawShape;
 
 export const deleteContentSchema = z.object(deleteContentShape).superRefine((input, ctx) => {
-  const selectors = [input.sourceId, input.documentId, input.tags].filter(
+  const selectors = [input.sourceId, input.documentId, input.tags, input.domain].filter(
     (value) => value !== undefined,
   );
   if (selectors.length === 0) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'provide exactly one of sourceId, documentId or tags',
+      message: 'provide exactly one of sourceId, documentId, tags or domain',
     });
   }
   if (selectors.length > 1) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
-      message: 'provide only ONE of sourceId, documentId or tags',
+      message: 'provide only ONE of sourceId, documentId, tags or domain',
     });
   }
 });
@@ -538,6 +562,38 @@ export const getContentOutputShape = {
 } satisfies z.ZodRawShape;
 
 // ---------------------------------------------------------------------------
+// domain
+// ---------------------------------------------------------------------------
+
+export const domainToolShape = {
+  operation: z
+    .enum(['list_domains', 'create_domain', 'delete_domain', 'get_domain_info'])
+    .describe('The operation to perform.'),
+  domain: domainSchema
+    .optional()
+    .describe(
+      'Domain identifier. Required for create_domain, delete_domain and get_domain_info; ignored for list_domains.',
+    ),
+} satisfies z.ZodRawShape;
+
+export const domainToolSchema = z.object(domainToolShape).superRefine((input, ctx) => {
+  if (input.operation !== 'list_domains' && input.domain === undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['domain'],
+      message: `domain is required for operation "${input.operation}"`,
+    });
+  }
+});
+
+export type DomainToolInput = z.infer<typeof domainToolSchema>;
+
+export const domainToolOutputShape = {
+  operation: z.string(),
+  result: z.record(z.unknown()),
+} satisfies z.ZodRawShape;
+
+// ---------------------------------------------------------------------------
 // Internal / web + CLI payloads
 // ---------------------------------------------------------------------------
 
@@ -546,6 +602,7 @@ export const listDocumentsSchema = z.object({
   offset: z.number().int().min(0).default(0),
   tag: z.string().trim().min(1).max(64).optional(),
   search: z.string().trim().min(1).max(256).optional(),
+  domain: domainSchema.optional(),
 });
 export type ListDocumentsInput = z.infer<typeof listDocumentsSchema>;
 

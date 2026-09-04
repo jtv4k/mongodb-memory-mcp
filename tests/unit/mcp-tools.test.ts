@@ -92,6 +92,7 @@ type FakeService = ReturnType<typeof createFakeService>;
 const storeResult: StoreContentResult = {
   documentId: '507f1f77bcf86cd799439011',
   sourceId: 'docs/api/authentication',
+  domain: 'docs/api',
   title: 'API authentication',
   version: 2,
   chunkCount: 7,
@@ -156,6 +157,7 @@ const listSourcesResult: ListSourcesResult = {
   sources: [
     {
       sourceId: 'ops/runbooks/rotation',
+      domain: 'ops/runbooks',
       title: 'Credential rotation runbook',
       uri: 'https://wiki.example.com/rotation',
       contentType: 'markdown',
@@ -169,6 +171,7 @@ const listSourcesResult: ListSourcesResult = {
     },
     {
       sourceId: 'adr/0007-hybrid-search',
+      domain: null,
       title: 'ADR 0007: hybrid search',
       uri: null,
       contentType: 'text',
@@ -196,6 +199,8 @@ const documentDetail: DocumentDetail = {
   document: {
     id: '507f1f77bcf86cd799439011',
     sourceId: 'ops/runbooks/rotation',
+    domain: 'ops/runbooks',
+    domainPath: ['ops', 'ops/runbooks'],
     title: 'Credential rotation runbook',
     uri: 'https://wiki.example.com/rotation',
     contentType: 'markdown',
@@ -858,7 +863,7 @@ describe('delete_content', () => {
     const outcome = await call(harness, 'delete_content', {});
 
     expect(outcome.isError).toBe(true);
-    expect(outcome.text).toContain('exactly one of sourceId, documentId or tags');
+    expect(outcome.text).toContain('exactly one of sourceId, documentId, tags or domain');
     expect(harness.service.deleteContent).not.toHaveBeenCalled();
   });
 
@@ -869,7 +874,7 @@ describe('delete_content', () => {
     const outcome = await call(harness, 'delete_content', args);
 
     expect(outcome.isError).toBe(true);
-    expect(outcome.text).toContain('only ONE of sourceId, documentId or tags');
+    expect(outcome.text).toContain('only ONE of sourceId, documentId, tags or domain');
     expect(harness.service.deleteContent).not.toHaveBeenCalled();
   });
 
@@ -877,6 +882,98 @@ describe('delete_content', () => {
     const outcome = await call(harness, 'delete_content', { documentId: 'not-an-objectid' });
 
     expect(outcome.isError).toBe(true);
+    expect(harness.service.deleteContent).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// domain
+// ---------------------------------------------------------------------------
+
+describe('domain', () => {
+  it('list_domains groups sources by their exact domain, including "no-domain"', async () => {
+    harness.service.listSources.mockResolvedValue({
+      ...listSourcesResult,
+      sources: [
+        { ...listSourcesResult.sources[0]!, domain: 'docs/api', chunkCount: 5 },
+        { ...listSourcesResult.sources[1]!, domain: 'docs/api', chunkCount: 3 },
+      ],
+    });
+
+    const outcome = await call(harness, 'domain', { operation: 'list_domains' });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.text).toContain('docs/api');
+    expect(outcome.text).toContain('2 sources, 8 chunks');
+    expect(outcome.structured).toMatchObject({
+      operation: 'list_domains',
+      result: { domains: [{ name: 'docs/api', count: 8, sourceCount: 2 }] },
+    });
+  });
+
+  it('create_domain is a no-op confirmation — nothing is created implicitly', async () => {
+    const outcome = await call(harness, 'domain', {
+      operation: 'create_domain',
+      domain: 'docs/api',
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(outcome.text).toContain('docs/api');
+    expect(outcome.structured).toMatchObject({
+      operation: 'create_domain',
+      result: { domain: 'docs/api', created: true },
+    });
+    expect(harness.service.storeContent).not.toHaveBeenCalled();
+  });
+
+  it('delete_domain deletes by the exact domain selector, not a prefix', async () => {
+    harness.service.deleteContent.mockResolvedValue(deleteResult);
+
+    const outcome = await call(harness, 'domain', {
+      operation: 'delete_domain',
+      domain: 'docs/api',
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(harness.service.deleteContent).toHaveBeenCalledWith(
+      { domain: 'docs/api' },
+      expect.anything(),
+    );
+    expect(outcome.structured).toMatchObject({
+      operation: 'delete_domain',
+      result: { domain: 'docs/api', deletedDocuments: 1, deletedChunks: 12 },
+    });
+  });
+
+  it('get_domain_info reports the whole subtree via a server-side prefix filter', async () => {
+    harness.service.listSources.mockResolvedValue({
+      ...listSourcesResult,
+      sources: [{ ...listSourcesResult.sources[0]!, domain: 'docs/api/v1' }],
+    });
+
+    const outcome = await call(harness, 'domain', {
+      operation: 'get_domain_info',
+      domain: 'docs/api',
+    });
+
+    expect(outcome.isError).toBe(false);
+    expect(harness.service.listSources).toHaveBeenCalledWith(
+      expect.objectContaining({ domain: 'docs/api' }),
+      expect.anything(),
+    );
+    expect(outcome.structured).toMatchObject({
+      operation: 'get_domain_info',
+      result: { domain: 'docs/api', sourceCount: 1 },
+    });
+  });
+
+  it('rejects create/delete/get_info without a domain, before calling the service', async () => {
+    for (const operation of ['create_domain', 'delete_domain', 'get_domain_info']) {
+      const outcome = await call(harness, 'domain', { operation });
+      expect(outcome.isError).toBe(true);
+      expect(outcome.text).toContain('domain is required');
+    }
+    expect(harness.service.listSources).not.toHaveBeenCalled();
     expect(harness.service.deleteContent).not.toHaveBeenCalled();
   });
 });

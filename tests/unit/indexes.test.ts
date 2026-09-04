@@ -374,6 +374,7 @@ describe('ensureIndexes', () => {
           { type: 'filter', path: 'contentType' },
           { type: 'filter', path: 'embeddingModel' },
           { type: 'filter', path: 'embeddingDimensions' },
+          { type: 'filter', path: 'domainPath' },
         ],
       }),
       ready(config.mongo.textIndexName, 'search', {
@@ -391,6 +392,7 @@ describe('ensureIndexes', () => {
             contentType: [{ type: 'token', normalizer: 'lowercase' }],
             embeddingModel: [{ type: 'token', normalizer: 'lowercase' }],
             documentId: [{ type: 'objectId' }],
+            domainPath: [{ type: 'token', normalizer: 'none' }],
           },
         },
       }),

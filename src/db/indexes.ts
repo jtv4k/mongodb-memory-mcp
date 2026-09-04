@@ -204,6 +204,18 @@ export const STANDARD_INDEXES: readonly StandardIndexSpec[] = [
     why: 'default browse ordering (newest first) and the list_documents pagination sort',
   },
   {
+    collection: COLLECTIONS.documents,
+    name: 'documents_domain',
+    key: { domain: 1 },
+    why: "exact-domain lookups: delete_content's domain selector and the domain tool's create/delete/get-info operations, none of which go through $search",
+  },
+  {
+    collection: COLLECTIONS.documents,
+    name: 'documents_domainPath',
+    key: { domainPath: 1 },
+    why: 'multikey index for prefix-filtered list_sources/list_documents domain filters that skip $search (the plain, non-substring-search path), mirroring documents_tags',
+  },
+  {
     collection: COLLECTIONS.chunks,
     name: 'chunks_documentId_chunkIndex_unique',
     key: { documentId: 1, chunkIndex: 1 },

@@ -117,6 +117,7 @@ describe('ensureIndexes on Atlas Local', () => {
     expect(filterPaths(info?.latestDefinition)).toEqual([
       'contentType',
       'documentId',
+      'domainPath',
       'embeddingDimensions',
       'embeddingModel',
       'sourceId',

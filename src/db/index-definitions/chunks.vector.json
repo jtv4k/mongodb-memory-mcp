@@ -13,7 +13,14 @@
     "Every `filter` path is a field a search may narrow on. $vectorSearch can ONLY",
     "filter on paths declared here, which is why chunks denormalise their parent's",
     "tags/contentType. `embeddingModel` is a filter so a re-embedding backfill can",
-    "search old and new vectors separately while it runs."
+    "search old and new vectors separately while it runs.",
+    "",
+    "`domainPath` is the materialised ancestor chain of `domain` (e.g. domain",
+    "\"docs/api/v1\" -> domainPath [\"docs\", \"docs/api\", \"docs/api/v1\"]), filtered",
+    "the same way `tags` is: an array-contains-value match, so a domain filter",
+    "gets prefix semantics (matches the domain and everything under it) with no",
+    "$regex or range query. `domain` itself is not a filter path here: nothing",
+    "vector-searches chunks by the exact scalar, only by prefix."
   ],
   "fields": [
     {
@@ -27,6 +34,7 @@
     { "type": "filter", "path": "tags" },
     { "type": "filter", "path": "contentType" },
     { "type": "filter", "path": "embeddingModel" },
-    { "type": "filter", "path": "embeddingDimensions" }
+    { "type": "filter", "path": "embeddingDimensions" },
+    { "type": "filter", "path": "domainPath" }
   ]
 }

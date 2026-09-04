@@ -55,6 +55,16 @@ export interface DocumentDoc {
   _id: ObjectId;
   /** Stable caller-facing identity. Unique; re-ingesting the same id versions it. */
   sourceId: string;
+  /** Optional domain for organizing content in a filesystem-like structure */
+  domain: string | null;
+  /**
+   * Materialised ancestor chain of `domain` — for `"docs/api/v1"`,
+   * `["docs", "docs/api", "docs/api/v1"]`. `[]` when `domain` is null. Powers
+   * prefix-filtered search/list as a plain array-contains query, the same
+   * pattern `tags` already uses; `domain` itself stays the exact field for
+   * create/delete/lookup.
+   */
+  domainPath: string[];
   title: string;
   uri: string | null;
   contentType: ContentType;
@@ -99,6 +109,9 @@ export interface ChunkDoc {
   tags: string[];
   documentVersion: number;
   documentContentHash: string;
+  domain: string | null;
+  /** See {@link DocumentDoc.domainPath}. */
+  domainPath: string[];
 
   // --- the vector and its provenance (flattened so it is filterable) ---
   embedding: number[];
@@ -187,6 +200,7 @@ export interface SearchKnowledgeResult {
 export interface StoreContentResult {
   documentId: string;
   sourceId: string;
+  domain: string | null;
   title: string;
   version: number;
   chunkCount: number;
@@ -209,6 +223,7 @@ export interface SourceSummary {
   version: number;
   /** Distinct embedding models across this source's chunks — >1 means mid-backfill. */
   embeddingModels: string[];
+  domain: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

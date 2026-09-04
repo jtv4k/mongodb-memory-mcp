@@ -54,7 +54,8 @@ Gotchas:
 - Results are CHUNKS, not whole documents, and passages are condensed for display. Several hits may come from the same sourceId at different chunk indexes; that usually means the document is highly relevant. If you need the exact, contiguous stored text — e.g. to read a document you've already located in full, or to quote it precisely — call get_content with its sourceId instead.
 - Hybrid scores come from rank fusion, so they are small (around 0.01-0.03) and are only meaningful relative to each other in the same response. Do not compare them across calls, and do not set minScore against them without looking at a real response first.
 - filters are AND-ed, and tag matching is exact against lowercased tags. Over-filtering silently returns nothing; drop filters before concluding the knowledge base is empty.
-- Set includeText=false to get ranking and attribution without the passage bodies.`;
+- Set includeText=false to get ranking and attribution without the passage bodies.
+- Domain filtering is supported for narrowing search results to a specific domain prefix or exact domain match.`;
 
 export function registerSearchKnowledgeTool(server: McpServer, deps: ToolDeps): void {
   server.registerTool(

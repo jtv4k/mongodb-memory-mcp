@@ -6,7 +6,13 @@
     "the web UI. Applied as code by `npm run db:indexes` — see chunks.vector.json.",
     "",
     "`dynamic: false` is deliberate: indexing the 1024-float `embedding` array as",
-    "text would be a large, useless waste of index space."
+    "text would be a large, useless waste of index space.",
+    "",
+    "`domainPath` is the materialised ancestor chain of `domain` (see",
+    "chunks.vector.json) — token-equals against it gives a domain filter prefix",
+    "semantics. Its normalizer is deliberately `none`, unlike tags/sourceId:",
+    "`domain` is documented as case-sensitive, so lowercasing here would make",
+    "\"Docs/API\" and \"docs/api\" collide."
   ],
   "mappings": {
     "dynamic": false,
@@ -18,7 +24,8 @@
       "sourceId": [{ "type": "token", "normalizer": "lowercase" }],
       "contentType": [{ "type": "token", "normalizer": "lowercase" }],
       "embeddingModel": [{ "type": "token", "normalizer": "lowercase" }],
-      "documentId": [{ "type": "objectId" }]
+      "documentId": [{ "type": "objectId" }],
+      "domainPath": [{ "type": "token", "normalizer": "none" }]
     }
   }
 }

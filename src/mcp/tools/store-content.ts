@@ -65,7 +65,8 @@ export function registerStoreContentTool(server: McpServer, deps: ToolDeps): voi
 
 function renderStoreText(result: StoreContentResult): string {
   const { embedding } = result;
-  const identity = `"${clip(result.title, 120)}" (sourceId: ${result.sourceId}, version ${result.version})`;
+  const domainSuffix = result.domain ? `, domain: ${result.domain}` : '';
+  const identity = `"${clip(result.title, 120)}" (sourceId: ${result.sourceId}, version ${result.version}${domainSuffix})`;
 
   if (result.outcome === 'unchanged') {
     return [

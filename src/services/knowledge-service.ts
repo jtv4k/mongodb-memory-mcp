@@ -74,7 +74,13 @@ import {
 } from '../errors.js';
 import { logAppError, type Logger } from '../logger.js';
 import { buildHighlightFragments } from './highlight.js';
-import { computeContentHash, deriveSourceId, deriveTitle, normalizeContent } from './identity.js';
+import {
+  computeContentHash,
+  deriveSourceId,
+  deriveTitle,
+  domainAncestors,
+  normalizeContent,
+} from './identity.js';
 import {
   reciprocalRankFusion,
   type FusedCandidate,
@@ -190,6 +196,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
         return {
           documentId: existing._id.toHexString(),
           sourceId,
+          domain: existing.domain,
           title: existing.title,
           version: existing.version,
           chunkCount: currency.total,
@@ -234,6 +241,10 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
 
     const documentId = existing?._id ?? new ObjectId();
     const contentChanged = !existing || existing.contentHash !== contentHash;
+    // Full-replace semantics, same as `tags`/`uri`: omitting `domain` on a
+    // re-store clears it rather than carrying the previous value forward.
+    const domain = input.domain ?? null;
+    const domainPath = domainAncestors(domain);
     const stamp: EmbeddingStamp = {
       provider: embedded.info.provider,
       model: embedded.info.model,
@@ -243,6 +254,8 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
 
     const documentDoc: Omit<DocumentDoc, '_id'> = {
       sourceId,
+      domain,
+      domainPath,
       title,
       uri: input.uri ?? null,
       contentType: input.contentType,
@@ -288,6 +301,8 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
       uri: input.uri ?? null,
       contentType: input.contentType,
       tags: input.tags,
+      domain,
+      domainPath,
       documentVersion: documentDoc.version,
       documentContentHash: contentHash,
       // `embedded.vectors` was length-checked against the chunk list already.
@@ -307,6 +322,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
     return {
       documentId: documentId.toHexString(),
       sourceId,
+      domain,
       title,
       version: documentDoc.version,
       chunkCount: chunkDocs.length,
@@ -885,6 +901,9 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
       clauses.push({ documentId: { $in: filters.documentIds.map((id) => new ObjectId(id)) } });
     }
     if (filters?.contentTypes?.length) clauses.push({ contentType: { $in: filters.contentTypes } });
+    // Array-contains on the materialised ancestor chain: a filter for
+    // "docs/api" matches "docs/api" and everything under it.
+    if (filters?.domain) clauses.push({ domainPath: filters.domain });
 
     // `$vectorSearch` filters support no `$all`, so ALL-of-these-tags is an $and
     // of single-element `$in`s, each of which matches any element of the array.
@@ -912,6 +931,9 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
         ),
       );
     }
+    // Prefix semantics, same as the vector leg: token-equals against the
+    // materialised ancestor chain, not the exact `domain` scalar.
+    if (filters?.domain) clauses.push(tokenEquals('domainPath', [filters.domain]));
     for (const tag of normalizeTags(filters?.tags)) clauses.push(tokenEquals('tags', [tag]));
 
     return clauses;
@@ -1006,6 +1028,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
           uri: 1,
           contentType: 1,
           tags: 1,
+          domain: 1,
           contentLength: 1,
           version: 1,
           createdAt: 1,
@@ -1030,12 +1053,13 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
             config.mongo.documentsTextIndexName,
             input.search,
             input.tag,
+            input.domain,
             searchSort,
           ),
           { $facet: { total: SEARCH_TOTAL_FACET, page: pageStages } },
         ]
       : [
-          { $match: buildDocumentMatch(input.tag) },
+          { $match: buildDocumentMatch(input.tag, input.domain) },
           {
             $facet: {
               total: [{ $count: 'value' }],
@@ -1059,6 +1083,7 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
       uri: row.uri,
       contentType: row.contentType,
       tags: row.tags,
+      domain: row.domain,
       // The real count, not the document's stored one: a mismatch is exactly
       // what an operator needs to see after an interrupted ingest.
       chunkCount: row.stats?.chunkCount ?? 0,
@@ -1139,12 +1164,15 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
   function buildDeleteSelector(input: DeleteContentInput): Filter<DocumentDoc> {
     if (input.documentId) return { _id: new ObjectId(input.documentId) };
     if (input.sourceId) return { sourceId: input.sourceId };
+    if (input.domain) return { domain: input.domain };
     const tags = normalizeTags(input.tags);
     // ALL of the given tags, per the tool description — an ANY match would make
     // a broad delete far too easy to trigger by accident.
     if (tags.length > 0) return { tags: { $all: tags } };
 
-    throw new ValidationError('delete_content requires one of sourceId, documentId or tags');
+    throw new ValidationError(
+      'delete_content requires one of sourceId, documentId, tags or domain',
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -1166,13 +1194,17 @@ export function createKnowledgeService(deps: KnowledgeServiceDeps): KnowledgeSer
 
     const pipeline: Document[] = input.search
       ? [
-          buildDocumentSearchStage(config.mongo.documentsTextIndexName, input.search, input.tag, {
-            updatedAt: -1,
-          }),
+          buildDocumentSearchStage(
+            config.mongo.documentsTextIndexName,
+            input.search,
+            input.tag,
+            input.domain,
+            { updatedAt: -1 },
+          ),
           { $facet: { total: SEARCH_TOTAL_FACET, page: pageStages } },
         ]
       : [
-          { $match: buildDocumentMatch(input.tag) },
+          { $match: buildDocumentMatch(input.tag, input.domain) },
           {
             $facet: {
               total: [{ $count: 'value' }],
@@ -1510,6 +1542,7 @@ interface SourceRow {
   uri: string | null;
   contentType: DocumentDoc['contentType'];
   tags: string[];
+  domain: string | null;
   contentLength: number;
   version: number;
   createdAt: Date;
@@ -1571,9 +1604,15 @@ function normalizeTags(tags: readonly string[] | undefined): string[] {
   return [...new Set(tags.map((tag) => tag.trim().toLowerCase()).filter((tag) => tag.length > 0))];
 }
 
-function buildDocumentMatch(tag: string | undefined): Filter<DocumentDoc> {
+function buildDocumentMatch(
+  tag: string | undefined,
+  domain: string | undefined,
+): Filter<DocumentDoc> {
   const match: Filter<DocumentDoc> = {};
   if (tag) match.tags = tag.toLowerCase();
+  // Array-contains on the materialised ancestor chain: prefix semantics, same
+  // as the search-side filters.
+  if (domain) match.domainPath = domain;
   return match;
 }
 
@@ -1591,6 +1630,7 @@ function buildDocumentSearchStage(
   index: string,
   search: string,
   tag: string | undefined,
+  domain: string | undefined,
   sort: Document,
 ): Document {
   const wildcard = {
@@ -1599,17 +1639,16 @@ function buildDocumentSearchStage(
     allowAnalyzedField: true,
   };
 
+  const filter: Document[] = [];
+  if (tag) filter.push({ equals: { path: 'tags', value: tag.toLowerCase() } });
+  // Prefix semantics via the materialised ancestor chain, case-sensitive
+  // (domainPath is not lowercase-normalised, unlike tags/sourceId).
+  if (domain) filter.push({ equals: { path: 'domainPath', value: domain } });
+
   return {
     $search: {
       index,
-      ...(tag
-        ? {
-            compound: {
-              must: [{ wildcard }],
-              filter: [{ equals: { path: 'tags', value: tag.toLowerCase() } }],
-            },
-          }
-        : { wildcard }),
+      ...(filter.length > 0 ? { compound: { must: [{ wildcard }], filter } } : { wildcard }),
       // The exact figure, not the default lowerBound estimate: `total` is a
       // pagination contract, and the non-search path counts exactly too.
       count: { type: 'total' },
